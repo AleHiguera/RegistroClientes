@@ -1,0 +1,14 @@
+### Compilados ###
+out/
+
+### Se generan solos al ejecutar (no subir al repositorio) ###
+*.db
+servidor.p12
+servidores_conocidos.properties
+
+### IntelliJ IDEA ###
+.idea/workspace.xml
+.idea/shelf/
+
+### Mac OS ###
+.DS_Store
