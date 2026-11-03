@@ -14,6 +14,8 @@ public final class Protocolo {
     public static final String[] VERSIONES_TLS = {"TLSv1.3", "TLSv1.2"};
 
     // Comandos del cliente
+    public static final String COMPROBAR_USUARIO = "COMPROBAR_USUARIO"; // usuario (¿está libre?)
+    public static final String COMPROBAR_CORREO = "COMPROBAR_CORREO";   // correo (¿está libre?)
     public static final String REGISTRAR = "REGISTRAR";         // usuario, nombre, correo, password
     public static final String LOGIN = "LOGIN";                 // usuario, password
     public static final String PERFIL = "PERFIL";               // (requiere sesión)

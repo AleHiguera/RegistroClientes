@@ -108,25 +108,82 @@ public class ClienteConsola {
 
     // ---------- Acciones ----------
 
+    /** Cada dato se comprueba en cuanto se escribe; si está mal se vuelve a pedir solo ese. */
     private void crearCuenta() throws IOException {
         System.out.println("\n-- Crear cuenta --");
-        String usuario = leer("Usuario: ");
-        String nombre = leer("Nombre completo: ");
-        String correo = leer("Correo: ");
-        System.out.println("(La contraseña es un PIN de exactamente 4 números)");
-        String password = leerPassword("Contraseña: ");
-        String confirmar = leerPassword("Confirmar contraseña: ");
+        System.out.println("(Deja un dato vacío y pulsa Enter para cancelar)");
 
-        String problema = Validador.validarRegistro(usuario, nombre, correo, password);
-        if (problema == null && !password.equals(confirmar)) {
-            problema = "Las contraseñas no coinciden.";
+        String usuario = pedirDato("Usuario: ", u -> comprobarEnServidor(Protocolo.COMPROBAR_USUARIO, u, Validador.validarUsuario(u)));
+        if (usuario == null) {
+            return;
         }
-        if (problema != null) {
-            System.out.println("[ERROR] " + problema);
+        String nombre = pedirDato("Nombre completo: ", Validador::validarNombre);
+        if (nombre == null) {
+            return;
+        }
+        String correo = pedirDato("Correo: ", c -> comprobarEnServidor(Protocolo.COMPROBAR_CORREO, c, Validador.validarCorreo(c)));
+        if (correo == null) {
+            return;
+        }
+        String password = pedirPin();
+        if (password == null) {
             return;
         }
 
         mostrarResultado(conexion.solicitar(Protocolo.REGISTRAR, usuario, nombre, correo, password));
+    }
+
+    /** Pide un dato hasta que sea válido. Devuelve null si se deja vacío (cancelar). */
+    private String pedirDato(String mensaje, Comprobacion comprobacion) throws IOException {
+        while (true) {
+            String valor = leer(mensaje);
+            if (valor.isEmpty()) {
+                System.out.println("Registro cancelado.");
+                return null;
+            }
+            String problema = comprobacion.problema(valor);
+            if (problema == null) {
+                System.out.println("  [OK]");
+                return valor;
+            }
+            System.out.println("  [ERROR] " + problema);
+        }
+    }
+
+    /** Primero las reglas locales (sin gastar una petición) y después si está libre en el servidor. */
+    private String comprobarEnServidor(String comando, String valor, String problemaLocal) throws IOException {
+        if (problemaLocal != null) {
+            return problemaLocal;
+        }
+        String[] respuesta = conexion.solicitar(comando, valor);
+        return esOk(respuesta) ? null : respuesta[1];
+    }
+
+    private String pedirPin() {
+        System.out.println("(La contraseña es un PIN de exactamente 4 números)");
+        while (true) {
+            String password = leerPassword("Contraseña: ");
+            if (password.isEmpty()) {
+                System.out.println("Registro cancelado.");
+                return null;
+            }
+            String problema = Validador.validarPassword(password);
+            if (problema != null) {
+                System.out.println("  [ERROR] " + problema);
+                continue;
+            }
+            if (!password.equals(leerPassword("Confirmar contraseña: "))) {
+                System.out.println("  [ERROR] Las contraseñas no coinciden, escríbela de nuevo.");
+                continue;
+            }
+            return password;
+        }
+    }
+
+    @FunctionalInterface
+    private interface Comprobacion {
+        /** Motivo por el que el dato no vale, o null si es válido. */
+        String problema(String valor) throws IOException;
     }
 
     private void iniciarSesion() throws IOException {

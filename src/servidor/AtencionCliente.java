@@ -11,6 +11,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.function.Function;
 
 /** Atiende a un cliente conectado. La sesión vive mientras dure la conexión. */
 public class AtencionCliente implements Runnable {
@@ -50,6 +51,8 @@ public class AtencionCliente implements Runnable {
 
     private String[] procesar(String[] mensaje) {
         return switch (mensaje[0]) {
+            case Protocolo.COMPROBAR_USUARIO -> comprobar(mensaje, GestorCuentas::comprobarUsuario);
+            case Protocolo.COMPROBAR_CORREO -> comprobar(mensaje, GestorCuentas::comprobarCorreo);
             case Protocolo.REGISTRAR -> registrar(mensaje);
             case Protocolo.LOGIN -> iniciarSesion(mensaje);
             case Protocolo.PERFIL -> perfil();
@@ -57,6 +60,14 @@ public class AtencionCliente implements Runnable {
             case Protocolo.BORRAR_CUENTA -> borrarCuenta(mensaje);
             default -> error("Comando desconocido.");
         };
+    }
+
+    /** Durante el registro el cliente pregunta si el usuario o el correo siguen libres. */
+    private String[] comprobar(String[] m, Function<String, GestorCuentas.Resultado> comprobacion) {
+        if (m.length != 2) {
+            return error("Datos incompletos.");
+        }
+        return responder(comprobacion.apply(m[1]));
     }
 
     private String[] registrar(String[] m) {

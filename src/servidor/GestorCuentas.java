@@ -64,10 +64,53 @@ public final class GestorCuentas {
 
         } catch (SQLException e) {
             if (e.getErrorCode() == SQLITE_CONSTRAINT) {
+                // SQLite indica la columna repetida: "UNIQUE constraint failed: clientes.usuario"
+                String detalle = String.valueOf(e.getMessage());
+                if (detalle.contains("clientes.usuario")) {
+                    return Resultado.error("El usuario \"" + usuario + "\" ya está en uso, elige otro.");
+                }
+                if (detalle.contains("clientes.correo")) {
+                    return Resultado.error("Ese correo ya está registrado, usa otro.");
+                }
                 return Resultado.error("El usuario o el correo ya están registrados.");
             }
             System.err.println("[DB] Error al registrar: " + e.getMessage());
             return Resultado.error("Error interno del servidor.");
+        }
+    }
+
+    public static Resultado comprobarUsuario(String usuario) {
+        usuario = usuario.trim();
+        String problema = Validador.validarUsuario(usuario);
+        if (problema != null) {
+            return Resultado.error(problema);
+        }
+        return existe("SELECT 1 FROM clientes WHERE usuario = ?", usuario)
+                ? Resultado.error("El usuario \"" + usuario + "\" ya está en uso, elige otro.")
+                : Resultado.ok("Usuario disponible.", usuario);
+    }
+
+    public static Resultado comprobarCorreo(String correo) {
+        correo = correo.trim();
+        String problema = Validador.validarCorreo(correo);
+        if (problema != null) {
+            return Resultado.error(problema);
+        }
+        return existe("SELECT 1 FROM clientes WHERE correo = ?", correo)
+                ? Resultado.error("Ese correo ya está registrado, usa otro.")
+                : Resultado.ok("Correo disponible.", null);
+    }
+
+    /** Ante un error de la base de datos responde que existe, para no dar por libre algo que no se pudo comprobar. */
+    private static boolean existe(String sql, String valor) {
+        try (Connection conn = BaseDatos.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, valor);
+            return pstmt.executeQuery().next();
+        } catch (SQLException e) {
+            System.err.println("[DB] Error al comprobar disponibilidad: " + e.getMessage());
+            return true;
         }
     }
 
