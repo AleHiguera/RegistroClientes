@@ -1,25 +1,33 @@
 # Registro de clientes
 
 Aplicación cliente-servidor en Java para registrar clientes con autenticación segura.
-El cliente tiene interfaz gráfica (Swing) para **crear la cuenta**, **iniciar sesión** y **borrar la cuenta**.
+Todo se usa desde la terminal: el cliente tiene menús para **crear la cuenta**, **iniciar sesión**,
+**ver tus datos** y **borrar la cuenta**.
 
-## Cómo ejecutarlo
+## Cómo ejecutarlo (VS Code o cualquier terminal)
 
-Requisito: JDK 17 o superior (probado con JDK 23).
+Requisito: JDK 17 o superior (probado con JDK 23). No hace falta ninguna extensión.
 
-### Con IntelliJ IDEA
-1. Abre la carpeta del proyecto.
-2. Ejecuta `servidor.ServidorAuth` (servidor).
-3. Ejecuta `cliente.ClienteApp` (cliente). Puedes abrir varios.
+1. Abre la carpeta del proyecto en VS Code y abre una terminal (**Ctrl + ñ**).
+2. Compila:
+   ```
+   .\compilar.bat
+   ```
+3. Arranca el servidor:
+   ```
+   .\servidor.bat
+   ```
+   (opcional: `.\servidor.bat 9000` para usar otro puerto)
+4. Abre **otra** terminal (botón **+** del panel de terminal) y arranca el cliente:
+   ```
+   .\cliente.bat
+   ```
+   Puedes abrir varias terminales con varios clientes.
 
-### Desde la consola (Windows)
-```
-compilar.bat
-servidor.bat        (opcional: servidor.bat 9000 para otro puerto)
-cliente.bat
-```
+También están como tareas de VS Code: **Ctrl + Shift + P → Tasks: Run Task → Servidor / Cliente**.
 
 Al arrancar, el servidor muestra las IP a las que se pueden conectar los clientes de la red.
+Las contraseñas no se ven en pantalla mientras las escribes.
 
 ## Primera ejecución tras clonar
 
@@ -43,7 +51,7 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 - **Sin pistas a atacantes**: el mismo mensaje y el mismo tiempo de respuesta tanto si el usuario existe como si no.
 - **Consultas preparadas** (`PreparedStatement`) contra inyección SQL.
 - **Validación en el servidor** (usuario, correo, contraseña de mínimo 8 caracteres con letras y números).
-- **Borrar la cuenta pide de nuevo la contraseña** y una confirmación.
+- **Borrar la cuenta pide de nuevo la contraseña** y una confirmación (s/n).
 - Sesión ligada a la conexión, con cierre automático tras 15 minutos de inactividad.
 
 ## Estructura
@@ -52,7 +60,7 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 src/
   comun/      Protocolo de mensajes, validaciones y huella del certificado
   servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, AtencionCliente
-  cliente/    ClienteApp (main), VentanaPrincipal (UI), ConexionServidor, ConfianzaTofu
+  cliente/    ClienteConsola (main, menús), ConexionServidor, ConfianzaTofu
 lib/
   sqlite-jdbc-3.51.0.0.jar
   jbcrypt-0.4.jar

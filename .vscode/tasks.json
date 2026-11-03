@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Compilar",
+      "type": "shell",
+      "command": ".\\compilar.bat",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Servidor",
+      "type": "shell",
+      "command": ".\\servidor.bat",
+      "dependsOn": "Compilar",
+      "presentation": { "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Cliente",
+      "type": "shell",
+      "command": ".\\cliente.bat",
+      "presentation": { "panel": "new", "focus": true },
+      "problemMatcher": []
+    }
+  ]
+}

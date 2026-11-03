@@ -1,2 +1,2 @@
 @echo off
-java -cp "out;lib/*" cliente.ClienteApp
+java -cp "out;lib/*" cliente.ClienteConsola
