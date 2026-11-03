@@ -113,7 +113,7 @@ public class ClienteConsola {
         String usuario = leer("Usuario: ");
         String nombre = leer("Nombre completo: ");
         String correo = leer("Correo: ");
-        System.out.println("(Mínimo 8 caracteres, con letras y números)");
+        System.out.println("(La contraseña es un PIN de exactamente 4 números)");
         String password = leerPassword("Contraseña: ");
         String confirmar = leerPassword("Confirmar contraseña: ");
 

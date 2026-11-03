@@ -1,6 +1,5 @@
 package comun;
 
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
@@ -11,8 +10,8 @@ import java.util.regex.Pattern;
 public final class Validador {
     private static final Pattern USUARIO = Pattern.compile("^[A-Za-z0-9_.-]{3,30}$");
     private static final Pattern CORREO = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-    private static final int MIN_PASSWORD = 8;
-    private static final int MAX_BYTES_PASSWORD = 72; // BCrypt ignora lo que pase de 72 bytes
+    private static final int LARGO_PIN = 4;
+    private static final Pattern PIN = Pattern.compile("^[0-9]{" + LARGO_PIN + "}$");
 
     private Validador() {}
 
@@ -30,15 +29,10 @@ public final class Validador {
         return validarPassword(password);
     }
 
+    /** La contraseña es un PIN: exactamente 4 dígitos, sin letras ni otros caracteres. */
     public static String validarPassword(String password) {
-        if (password == null || password.length() < MIN_PASSWORD) {
-            return "La contraseña debe tener al menos " + MIN_PASSWORD + " caracteres.";
-        }
-        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES_PASSWORD) {
-            return "La contraseña es demasiado larga.";
-        }
-        if (password.chars().noneMatch(Character::isLetter) || password.chars().noneMatch(Character::isDigit)) {
-            return "La contraseña debe incluir letras y números.";
+        if (password == null || !PIN.matcher(password).matches()) {
+            return "La contraseña debe ser un PIN de exactamente " + LARGO_PIN + " números.";
         }
         return null;
     }

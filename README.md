@@ -50,7 +50,7 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 - **Bloqueo por fuerza bruta**: 5 intentos fallidos bloquean ese usuario 5 minutos.
 - **Sin pistas a atacantes**: el mismo mensaje y el mismo tiempo de respuesta tanto si el usuario existe como si no.
 - **Consultas preparadas** (`PreparedStatement`) contra inyección SQL.
-- **Validación en el servidor** (usuario, correo, contraseña de mínimo 8 caracteres con letras y números).
+- **Validación en el servidor** (usuario, correo, contraseña: PIN de exactamente 4 números).
 - **Borrar la cuenta pide de nuevo la contraseña** y una confirmación (s/n).
 - Sesión ligada a la conexión, con cierre automático tras 15 minutos de inactividad.
 
