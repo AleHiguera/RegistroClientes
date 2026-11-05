@@ -26,6 +26,7 @@ public class ServidorAuth {
 
     public static void main(String[] args) {
         int puerto = args.length > 0 ? Integer.parseInt(args[0]) : Protocolo.PUERTO_POR_DEFECTO;
+        int puertoWeb = args.length > 1 ? Integer.parseInt(args[1]) : ServidorWeb.PUERTO_POR_DEFECTO;
 
         try {
             BaseDatos.inicializar();
@@ -35,11 +36,13 @@ public class ServidorAuth {
             try (SSLServerSocket servidorSocket =
                          (SSLServerSocket) tls.getServerSocketFactory().createServerSocket(puerto)) {
                 servidorSocket.setEnabledProtocols(Protocolo.VERSIONES_TLS);
+                ServidorWeb.iniciar(puertoWeb, tls);
 
                 System.out.println("Servidor TLS iniciado en el puerto " + puerto);
+                System.out.println("API web (HTTPS) para Brilliant en el puerto " + puertoWeb);
                 System.out.println("Huella SHA-256 del certificado (compárala en el cliente):");
                 System.out.println("   " + Huella.sha256(keystore.getCertificate(ALIAS)));
-                mostrarDirecciones(puerto);
+                mostrarDirecciones(puerto, puertoWeb);
 
                 while (true) {
                     Socket socket = servidorSocket.accept();
@@ -88,18 +91,22 @@ public class ServidorAuth {
         return contexto;
     }
 
-    private static void mostrarDirecciones(int puerto) throws SocketException {
-        System.out.println("Los clientes pueden conectarse a:");
-        System.out.println("   localhost:" + puerto + " (esta misma computadora)");
+    private static void mostrarDirecciones(int puerto, int puertoWeb) throws SocketException {
+        System.out.println("Los clientes pueden conectarse a (consola | Brilliant):");
+        mostrarDireccion("localhost", puerto, puertoWeb, "esta misma computadora");
         for (NetworkInterface red : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             if (!red.isUp() || red.isLoopback()) {
                 continue;
             }
             for (InetAddress direccion : Collections.list(red.getInetAddresses())) {
                 if (direccion instanceof Inet4Address) {
-                    System.out.println("   " + direccion.getHostAddress() + ":" + puerto + " (" + red.getDisplayName() + ")");
+                    mostrarDireccion(direccion.getHostAddress(), puerto, puertoWeb, red.getDisplayName());
                 }
             }
         }
+    }
+
+    private static void mostrarDireccion(String host, int puerto, int puertoWeb, String descripcion) {
+        System.out.println("   " + host + ":" + puerto + " | https://" + host + ":" + puertoWeb + " (" + descripcion + ")");
     }
 }

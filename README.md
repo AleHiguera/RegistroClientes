@@ -29,6 +29,23 @@ También están como tareas de VS Code: **Ctrl + Shift + P → Tasks: Run Task �
 Al arrancar, el servidor muestra las IP a las que se pueden conectar los clientes de la red.
 Las contraseñas no se ven en pantalla mientras las escribes.
 
+## Iniciar sesión desde Brilliant
+
+El servidor también abre una API HTTPS (puerto **8443**) para la app Brilliant, que corre en el navegador
+y no puede usar el puerto 8080 de la consola. Usa las mismas cuentas: se crean con el cliente de consola.
+
+1. Arranca el servidor (`.\servidor.bat`, o `.\servidor.bat 8080 8443` para elegir los dos puertos).
+2. **Una vez por navegador/celular**: abre `https://<IP-del-servidor>:8443`, comprueba que la huella
+   coincide con la que imprime el servidor y acepta el aviso del certificado.
+3. Abre Brilliant: pide usuario y PIN antes de elegir el mapa. Por defecto busca el servidor en el mismo
+   equipo desde el que se abrió la app (se puede cambiar en "Servidor" o con
+   `flutter run --dart-define=SERVIDOR=https://192.168.1.5:8443`).
+
+| Petición | Datos | Respuesta |
+|---|---|---|
+| `POST /api/login` | formulario `usuario`, `password` | JSON `ok`, `mensaje`, `usuario`, `nombre`, `token` |
+| `POST /api/logout` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` |
+
 ## Primera ejecución tras clonar
 
 No hace falta configurar nada. Si no existen, el servidor los crea solo:
@@ -59,7 +76,7 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 ```
 src/
   comun/      Protocolo de mensajes, validaciones y huella del certificado
-  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, AtencionCliente
+  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, AtencionCliente, ServidorWeb (API HTTPS)
   cliente/    ClienteConsola (main, menús), ConexionServidor, ConfianzaTofu
 lib/
   sqlite-jdbc-3.51.0.0.jar
