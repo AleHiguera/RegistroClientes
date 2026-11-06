@@ -46,7 +46,13 @@ o desde la propia app.
 |---|---|---|
 | `POST /api/login` | formulario `usuario`, `password` | JSON `ok`, `mensaje`, `usuario`, `nombre`, `token` |
 | `POST /api/registro` | formulario `usuario`, `nombre`, `correo`, `password` | igual que login (la cuenta queda con sesión iniciada) |
+| `POST /api/latido` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` (401 si la sesión ya no está activa) |
 | `POST /api/logout` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` |
+
+Un usuario solo puede estar conectado en un lugar a la vez, sumando consola y web: un segundo inicio de sesión
+se rechaza (`409` en la API) con el mensaje "ya está conectado, intenta con otro". La consola libera el usuario al
+cerrar sesión o perder la conexión. La app envía un latido cada 10 s y, si cierra sin avisar, el usuario queda
+libre a los 30 s.
 
 ## Primera ejecución tras clonar
 
@@ -72,13 +78,14 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 - **Validación en el servidor** (usuario, correo, contraseña: PIN de exactamente 4 números).
 - **Borrar la cuenta pide de nuevo la contraseña** y una confirmación (s/n).
 - Sesión ligada a la conexión, con cierre automático tras 15 minutos de inactividad.
+- **Una sola sesión por usuario**: el aviso de "ya está conectado" solo aparece con la contraseña correcta.
 
 ## Estructura
 
 ```
 src/
   comun/      Protocolo de mensajes, validaciones y huella del certificado
-  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, AtencionCliente, ServidorWeb (API HTTPS)
+  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, SesionesActivas, AtencionCliente, ServidorWeb (API HTTPS)
   cliente/    ClienteConsola (main, menús), ConexionServidor, ConfianzaTofu
 lib/
   sqlite-jdbc-3.51.0.0.jar

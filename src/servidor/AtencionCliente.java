@@ -14,7 +14,7 @@ import java.net.SocketTimeoutException;
 import java.util.function.Function;
 
 /** Atiende a un cliente conectado. La sesión vive mientras dure la conexión. */
-public class AtencionCliente implements Runnable {
+public class AtencionCliente implements Runnable, SesionesActivas.Sesion {
     private static final int INACTIVIDAD_MAX_MS = 15 * 60 * 1000;
 
     private final Socket socket;
@@ -45,8 +45,22 @@ public class AtencionCliente implements Runnable {
             System.out.println("[!] Fallo TLS con " + origen + ": " + e.getMessage());
         } catch (IOException e) {
             System.out.println("[!] Error con " + origen + ": " + e.getMessage());
+        } finally {
+            liberarSesion();
         }
         System.out.println("[-] " + origen + " desconectado");
+    }
+
+    @Override
+    public boolean caducada() {
+        return socket.isClosed();
+    }
+
+    private void liberarSesion() {
+        if (usuarioAutenticado != null) {
+            SesionesActivas.liberar(usuarioAutenticado, this);
+            usuarioAutenticado = null;
+        }
     }
 
     private String[] procesar(String[] mensaje) {
@@ -85,13 +99,21 @@ public class AtencionCliente implements Runnable {
         if (m.length != 3) {
             return error("Datos incompletos.");
         }
-        GestorCuentas.Resultado r = GestorCuentas.iniciarSesion(m[1], m[2]);
-        if (r.exito()) {
-            usuarioAutenticado = r.usuario();
-            System.out.println("[*] " + usuarioAutenticado + " inició sesión desde " + origen);
-        } else {
-            System.out.println("[!] Inicio de sesión fallido para '" + m[1] + "' desde " + origen);
+        if (usuarioAutenticado != null) {
+            return error("Ya tienes una sesión iniciada.");
         }
+        GestorCuentas.Resultado r = GestorCuentas.iniciarSesion(m[1], m[2]);
+        if (!r.exito()) {
+            System.out.println("[!] Inicio de sesión fallido para '" + m[1] + "' desde " + origen);
+            return responder(r);
+        }
+        // Se comprueba después de la contraseña, para no revelar quién está conectado a cualquiera
+        if (!SesionesActivas.ocupar(r.usuario(), this)) {
+            System.out.println("[!] " + r.usuario() + " ya está conectado, se rechazó el acceso desde " + origen);
+            return error(SesionesActivas.mensajeOcupado(r.usuario()));
+        }
+        usuarioAutenticado = r.usuario();
+        System.out.println("[*] " + usuarioAutenticado + " inició sesión desde " + origen);
         return responder(r);
     }
 
@@ -109,7 +131,7 @@ public class AtencionCliente implements Runnable {
     private String[] cerrarSesion() {
         if (usuarioAutenticado != null) {
             System.out.println("[*] " + usuarioAutenticado + " cerró sesión");
-            usuarioAutenticado = null;
+            liberarSesion();
         }
         return new String[]{Protocolo.OK, "Sesión cerrada."};
     }
@@ -124,7 +146,7 @@ public class AtencionCliente implements Runnable {
         GestorCuentas.Resultado r = GestorCuentas.borrarCuenta(usuarioAutenticado, m[1]);
         if (r.exito()) {
             System.out.println("[*] Cuenta borrada: " + usuarioAutenticado);
-            usuarioAutenticado = null;
+            liberarSesion();
         }
         return responder(r);
     }

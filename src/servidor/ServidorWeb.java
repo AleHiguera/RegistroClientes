@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
  *
  *   POST /api/login     (usuario, password como formulario)                 → token de sesión
  *   POST /api/registro  (usuario, nombre, correo, password como formulario) → cuenta creada y token de sesión
+ *   POST /api/latido    (cabecera Authorization: Bearer token)                → mantiene viva la sesión
  *   POST /api/logout    (cabecera Authorization: Bearer token)
  *   GET  /            página para aceptar el certificado en el navegador
  */
@@ -35,15 +36,28 @@ public final class ServidorWeb {
     public static final int PUERTO_POR_DEFECTO = 8443;
 
     private static final int MAX_CUERPO = 4096;
-    private static final long DURACION_MAX_MS = 12 * 60 * 60 * 1000L; // una partida puede durar bastante
+    private static final long SIN_LATIDO_MAX_MS = 30 * 1000L; // la app envía un latido cada 10 s
     private static final SecureRandom ALEATORIO = new SecureRandom();
 
     // token → sesión. La sesión ya no está ligada a una conexión, así que se identifica con un token aleatorio.
     private static final Map<String, SesionWeb> SESIONES = new ConcurrentHashMap<>();
 
-    private record SesionWeb(String usuario, long inicio) {
-        boolean caducada() {
-            return System.currentTimeMillis() - inicio > DURACION_MAX_MS;
+    /** Cerrar el navegador no avisa al servidor: se sabe que la app sigue abierta porque llegan sus latidos. */
+    private static final class SesionWeb implements SesionesActivas.Sesion {
+        private final String usuario;
+        private volatile long ultimoLatido = System.currentTimeMillis();
+
+        SesionWeb(String usuario) {
+            this.usuario = usuario;
+        }
+
+        void renovar() {
+            ultimoLatido = System.currentTimeMillis();
+        }
+
+        @Override
+        public boolean caducada() {
+            return System.currentTimeMillis() - ultimoLatido > SIN_LATIDO_MAX_MS;
         }
     }
 
@@ -66,6 +80,7 @@ public final class ServidorWeb {
         servidor.createContext("/", ServidorWeb::bienvenida);
         servidor.createContext("/api/login", api(ServidorWeb::iniciarSesion));
         servidor.createContext("/api/registro", api(ServidorWeb::registrar));
+        servidor.createContext("/api/latido", api(ServidorWeb::latido));
         servidor.createContext("/api/logout", api(ServidorWeb::cerrarSesion));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();
@@ -126,7 +141,6 @@ public final class ServidorWeb {
             responder(intercambio, 401, false, r.mensaje());
             return;
         }
-        System.out.println("[*] " + r.usuario() + " inició sesión (web) desde " + origen(intercambio));
         abrirSesion(intercambio, r);
     }
 
@@ -155,9 +169,17 @@ public final class ServidorWeb {
     }
 
     private static void abrirSesion(HttpExchange intercambio, GestorCuentas.Resultado r) throws IOException {
-        SESIONES.values().removeIf(SesionWeb::caducada);
+        SesionWeb sesion = new SesionWeb(r.usuario());
+        if (!SesionesActivas.ocupar(r.usuario(), sesion)) {
+            System.out.println("[!] " + r.usuario() + " ya está conectado, se rechazó el acceso web desde " + origen(intercambio));
+            responder(intercambio, 409, false, SesionesActivas.mensajeOcupado(r.usuario()));
+            return;
+        }
+        System.out.println("[*] " + r.usuario() + " inició sesión (web) desde " + origen(intercambio));
+
+        SESIONES.values().removeIf(s -> !SesionesActivas.ocupa(s.usuario, s));
         String token = nuevoToken();
-        SESIONES.put(token, new SesionWeb(r.usuario(), System.currentTimeMillis()));
+        SESIONES.put(token, sesion);
 
         GestorCuentas.Perfil perfil = GestorCuentas.obtenerPerfil(r.usuario());
         responder(intercambio, 200, true, r.mensaje(),
@@ -166,15 +188,33 @@ public final class ServidorWeb {
                 "token", token);
     }
 
+    /** Si faltaron latidos pero nadie más entró con ese usuario, la sesión continúa (p. ej. el celular se bloqueó un rato). */
+    private static void latido(HttpExchange intercambio) throws IOException {
+        String token = tokenDe(intercambio);
+        SesionWeb sesion = token != null ? SESIONES.get(token) : null;
+        if (sesion == null || !SesionesActivas.ocupa(sesion.usuario, sesion)) {
+            responder(intercambio, 401, false, "Tu sesión ya no está activa, inicia sesión de nuevo.");
+            return;
+        }
+        sesion.renovar();
+        responder(intercambio, 200, true, "Sesión activa.");
+    }
+
     private static void cerrarSesion(HttpExchange intercambio) throws IOException {
-        String autorizacion = intercambio.getRequestHeaders().getFirst("Authorization");
-        if (autorizacion != null && autorizacion.startsWith("Bearer ")) {
-            SesionWeb sesion = SESIONES.remove(autorizacion.substring("Bearer ".length()));
-            if (sesion != null) {
-                System.out.println("[*] " + sesion.usuario() + " cerró sesión (web)");
-            }
+        String token = tokenDe(intercambio);
+        SesionWeb sesion = token != null ? SESIONES.remove(token) : null;
+        if (sesion != null) {
+            SesionesActivas.liberar(sesion.usuario, sesion);
+            System.out.println("[*] " + sesion.usuario + " cerró sesión (web)");
         }
         responder(intercambio, 200, true, "Sesión cerrada.");
+    }
+
+    private static String tokenDe(HttpExchange intercambio) {
+        String autorizacion = intercambio.getRequestHeaders().getFirst("Authorization");
+        return autorizacion != null && autorizacion.startsWith("Bearer ")
+                ? autorizacion.substring("Bearer ".length())
+                : null;
     }
 
     /** Lee un cuerpo application/x-www-form-urlencoded. Si no es válido responde el error y devuelve null. */
