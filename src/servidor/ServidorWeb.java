@@ -30,6 +30,10 @@ import java.util.concurrent.Executors;
  *   POST /api/registro  (usuario, nombre, correo, password como formulario) → cuenta creada y token de sesión
  *   POST /api/latido    (cabecera Authorization: Bearer token)                → mantiene viva la sesión
  *   POST /api/logout    (cabecera Authorization: Bearer token)
+ *   POST /api/partida/crear   (mapa, jugadores como formulario; requiere sesión) → sala multijugador con su código
+ *   POST /api/partida/unirse  (codigo como formulario; requiere sesión)          → sala a la que se entró
+ *   POST /api/partida/estado  (codigo como formulario; requiere sesión)          → sala con sus jugadores actuales
+ *   POST /api/partida/salir   (codigo como formulario; requiere sesión)
  *   GET  /            página para aceptar el certificado en el navegador
  */
 public final class ServidorWeb {
@@ -65,6 +69,10 @@ public final class ServidorWeb {
         void atender(HttpExchange intercambio) throws IOException;
     }
 
+    private interface AccionSala {
+        SalasMultijugador.Resultado aplicar(String usuario, String codigo);
+    }
+
     private ServidorWeb() {}
 
     public static void iniciar(int puerto, SSLContext tls) throws IOException {
@@ -82,6 +90,10 @@ public final class ServidorWeb {
         servidor.createContext("/api/registro", api(ServidorWeb::registrar));
         servidor.createContext("/api/latido", api(ServidorWeb::latido));
         servidor.createContext("/api/logout", api(ServidorWeb::cerrarSesion));
+        servidor.createContext("/api/partida/crear", api(ServidorWeb::crearPartida));
+        servidor.createContext("/api/partida/unirse", api(enSala(SalasMultijugador::unirse)));
+        servidor.createContext("/api/partida/estado", api(enSala(SalasMultijugador::consultar)));
+        servidor.createContext("/api/partida/salir", api(enSala(SalasMultijugador::salir)));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();
     }
@@ -190,14 +202,23 @@ public final class ServidorWeb {
 
     /** Si faltaron latidos pero nadie más entró con ese usuario, la sesión continúa (p. ej. el celular se bloqueó un rato). */
     private static void latido(HttpExchange intercambio) throws IOException {
-        String token = tokenDe(intercambio);
-        SesionWeb sesion = token != null ? SESIONES.get(token) : null;
-        if (sesion == null || !SesionesActivas.ocupa(sesion.usuario, sesion)) {
-            responder(intercambio, 401, false, "Tu sesión ya no está activa, inicia sesión de nuevo.");
+        SesionWeb sesion = sesionActiva(intercambio);
+        if (sesion == null) {
             return;
         }
         sesion.renovar();
         responder(intercambio, 200, true, "Sesión activa.");
+    }
+
+    /** La sesión del token recibido. Si ya no está activa responde el error y devuelve null. */
+    private static SesionWeb sesionActiva(HttpExchange intercambio) throws IOException {
+        String token = tokenDe(intercambio);
+        SesionWeb sesion = token != null ? SESIONES.get(token) : null;
+        if (sesion == null || !SesionesActivas.ocupa(sesion.usuario, sesion)) {
+            responder(intercambio, 401, false, "Tu sesión ya no está activa, inicia sesión de nuevo.");
+            return null;
+        }
+        return sesion;
     }
 
     private static void cerrarSesion(HttpExchange intercambio) throws IOException {
@@ -208,6 +229,62 @@ public final class ServidorWeb {
             System.out.println("[*] " + sesion.usuario + " cerró sesión (web)");
         }
         responder(intercambio, 200, true, "Sesión cerrada.");
+    }
+
+    private static void crearPartida(HttpExchange intercambio) throws IOException {
+        SesionWeb sesion = sesionActiva(intercambio);
+        if (sesion == null) {
+            return;
+        }
+        Map<String, String> datos = leerFormulario(intercambio);
+        if (datos == null) {
+            return;
+        }
+        int mapa;
+        int jugadores;
+        try {
+            mapa = Integer.parseInt(String.valueOf(datos.get("mapa")));
+            jugadores = Integer.parseInt(String.valueOf(datos.get("jugadores")));
+        } catch (NumberFormatException e) {
+            responder(intercambio, 400, false, "Datos incompletos.");
+            return;
+        }
+
+        SalasMultijugador.Resultado r = SalasMultijugador.crear(sesion.usuario, mapa, jugadores);
+        if (r.exito()) {
+            System.out.println("[*] " + sesion.usuario + " creó la partida " + r.sala().codigo());
+        }
+        responderSala(intercambio, r);
+    }
+
+    /** Las acciones sobre una sala ya creada: todas reciben solo su código. */
+    private static Accion enSala(AccionSala accion) {
+        return intercambio -> {
+            SesionWeb sesion = sesionActiva(intercambio);
+            if (sesion == null) {
+                return;
+            }
+            Map<String, String> datos = leerFormulario(intercambio);
+            if (datos == null) {
+                return;
+            }
+            String codigo = datos.get("codigo");
+            if (codigo == null) {
+                responder(intercambio, 400, false, "Datos incompletos.");
+                return;
+            }
+            responderSala(intercambio, accion.aplicar(sesion.usuario, codigo));
+        };
+    }
+
+    private static void responderSala(HttpExchange intercambio, SalasMultijugador.Resultado r) throws IOException {
+        if (!r.exito()) {
+            responder(intercambio, 409, false, r.mensaje());
+        } else if (r.sala() == null) {
+            responder(intercambio, 200, true, r.mensaje());
+        } else {
+            enviar(intercambio, 200, "application/json", Json.sala(r.mensaje(), r.sala()));
+        }
     }
 
     private static String tokenDe(HttpExchange intercambio) {
@@ -243,13 +320,7 @@ public final class ServidorWeb {
     /** Responde un JSON {"ok": ..., "mensaje": ..., clave: valor...} con los pares extra que se indiquen. */
     private static void responder(HttpExchange intercambio, int codigo, boolean ok, String mensaje,
                                   String... clavesYValores) throws IOException {
-        StringBuilder json = new StringBuilder("{\"ok\":").append(ok)
-                .append(",\"mensaje\":").append(textoJson(mensaje));
-        for (int i = 0; i + 1 < clavesYValores.length; i += 2) {
-            json.append(',').append(textoJson(clavesYValores[i]))
-                    .append(':').append(textoJson(clavesYValores[i + 1]));
-        }
-        enviar(intercambio, codigo, "application/json", json.append('}').toString());
+        enviar(intercambio, codigo, "application/json", Json.respuesta(ok, mensaje, clavesYValores));
     }
 
     private static void enviar(HttpExchange intercambio, int codigo, String tipo, String contenido) throws IOException {
@@ -260,27 +331,6 @@ public final class ServidorWeb {
         try (OutputStream salida = intercambio.getResponseBody()) {
             salida.write(bytes);
         }
-    }
-
-    private static String textoJson(String texto) {
-        StringBuilder sb = new StringBuilder("\"");
-        for (char c : String.valueOf(texto).toCharArray()) {
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.append('"').toString();
     }
 
     private static String nuevoToken() {

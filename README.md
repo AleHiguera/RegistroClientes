@@ -48,11 +48,28 @@ o desde la propia app.
 | `POST /api/registro` | formulario `usuario`, `nombre`, `correo`, `password` | igual que login (la cuenta queda con sesión iniciada) |
 | `POST /api/latido` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` (401 si la sesión ya no está activa) |
 | `POST /api/logout` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` |
+| `POST /api/partida/crear` | cabecera con el token; formulario `mapa` (1-4), `jugadores` (2-6) | JSON de la sala (ver abajo) |
+| `POST /api/partida/unirse` | cabecera con el token; formulario `codigo` | JSON de la sala (`409` si no existe o está llena) |
+| `POST /api/partida/estado` | cabecera con el token; formulario `codigo` | JSON de la sala (`409` si ya no estás en ella) |
+| `POST /api/partida/salir` | cabecera con el token; formulario `codigo` | JSON `ok`, `mensaje` |
+
+El JSON de una sala tiene `ok`, `mensaje`, `codigo`, `mapa`, `capacidad`, `anfitrion` y `jugadores` (lista de usuarios,
+en orden de llegada). Las salas viven en memoria: se pierden al reiniciar el servidor. Si el anfitrión sale, la sala se
+cierra para todos, y quien pase 5 minutos sin consultar la sala pierde su lugar (si es el anfitrión, la sala se cierra).
 
 Un usuario solo puede estar conectado en un lugar a la vez, sumando consola y web: un segundo inicio de sesión
 se rechaza (`409` en la API) con el mensaje "ya está conectado, intenta con otro". La consola libera el usuario al
 cerrar sesión o perder la conexión. La app envía un latido cada 10 s y, si cierra sin avisar, el usuario queda
 libre a los 30 s.
+
+## Pruebas
+
+```
+.\probar.bat
+```
+
+Compila el proyecto y ejecuta las pruebas de `test/servidor` (salas multijugador, códigos y JSON). No usan
+ninguna librería externa ni tocan `clientes.db`.
 
 ## Primera ejecución tras clonar
 
@@ -85,8 +102,10 @@ Los tres están en `.gitignore`, así que cada computadora genera los suyos.
 ```
 src/
   comun/      Protocolo de mensajes, validaciones y huella del certificado
-  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, SesionesActivas, AtencionCliente, ServidorWeb (API HTTPS)
+  servidor/   ServidorAuth (main), BaseDatos, GestorCuentas, SesionesActivas, SalasMultijugador, CodigoSala, AtencionCliente, ServidorWeb (API HTTPS), Json
   cliente/    ClienteConsola (main, menús), ConexionServidor, ConfianzaTofu
+test/
+  servidor/   Pruebas (main) y las pruebas de cada clase
 lib/
   sqlite-jdbc-3.51.0.0.jar
   jbcrypt-0.4.jar
