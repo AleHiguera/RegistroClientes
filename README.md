@@ -32,7 +32,8 @@ Las contraseñas no se ven en pantalla mientras las escribes.
 ## Iniciar sesión desde Brilliant
 
 El servidor también abre una API HTTPS (puerto **8443**) para la app Brilliant, que corre en el navegador
-y no puede usar el puerto 8080 de la consola. Usa las mismas cuentas: se crean con el cliente de consola.
+y no puede usar el puerto 8080 de la consola. Usa las mismas cuentas: se pueden crear desde la consola
+o desde la propia app.
 
 1. Arranca el servidor (`.\servidor.bat`, o `.\servidor.bat 8080 8443` para elegir los dos puertos).
 2. **Una vez por navegador/celular**: abre `https://<IP-del-servidor>:8443`, comprueba que la huella
@@ -44,6 +45,7 @@ y no puede usar el puerto 8080 de la consola. Usa las mismas cuentas: se crean c
 | Petición | Datos | Respuesta |
 |---|---|---|
 | `POST /api/login` | formulario `usuario`, `password` | JSON `ok`, `mensaje`, `usuario`, `nombre`, `token` |
+| `POST /api/registro` | formulario `usuario`, `nombre`, `correo`, `password` | igual que login (la cuenta queda con sesión iniciada) |
 | `POST /api/logout` | cabecera `Authorization: Bearer <token>` | JSON `ok`, `mensaje` |
 
 ## Primera ejecución tras clonar

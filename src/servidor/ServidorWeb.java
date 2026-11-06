@@ -26,8 +26,9 @@ import java.util.concurrent.Executors;
  * API HTTPS para clientes que no pueden abrir un socket TLS directo, como la app Brilliant en el navegador.
  * Usa el mismo certificado y las mismas cuentas que el servidor de consola.
  *
- *   POST /api/login   (usuario, password como formulario)  → token de sesión
- *   POST /api/logout  (cabecera Authorization: Bearer token)
+ *   POST /api/login     (usuario, password como formulario)                 → token de sesión
+ *   POST /api/registro  (usuario, nombre, correo, password como formulario) → cuenta creada y token de sesión
+ *   POST /api/logout    (cabecera Authorization: Bearer token)
  *   GET  /            página para aceptar el certificado en el navegador
  */
 public final class ServidorWeb {
@@ -64,6 +65,7 @@ public final class ServidorWeb {
         });
         servidor.createContext("/", ServidorWeb::bienvenida);
         servidor.createContext("/api/login", api(ServidorWeb::iniciarSesion));
+        servidor.createContext("/api/registro", api(ServidorWeb::registrar));
         servidor.createContext("/api/logout", api(ServidorWeb::cerrarSesion));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();
@@ -124,11 +126,38 @@ public final class ServidorWeb {
             responder(intercambio, 401, false, r.mensaje());
             return;
         }
+        System.out.println("[*] " + r.usuario() + " inició sesión (web) desde " + origen(intercambio));
+        abrirSesion(intercambio, r);
+    }
 
+    /** Crea la cuenta con las mismas validaciones que la consola y deja la sesión ya iniciada. */
+    private static void registrar(HttpExchange intercambio) throws IOException {
+        Map<String, String> datos = leerFormulario(intercambio);
+        if (datos == null) {
+            return;
+        }
+        String usuario = datos.get("usuario");
+        String nombre = datos.get("nombre");
+        String correo = datos.get("correo");
+        String password = datos.get("password");
+        if (usuario == null || nombre == null || correo == null || password == null) {
+            responder(intercambio, 400, false, "Datos incompletos.");
+            return;
+        }
+
+        GestorCuentas.Resultado r = GestorCuentas.registrar(usuario, nombre, correo, password);
+        if (!r.exito()) {
+            responder(intercambio, 409, false, r.mensaje());
+            return;
+        }
+        System.out.println("[*] Nueva cuenta (web): " + r.usuario() + " desde " + origen(intercambio));
+        abrirSesion(intercambio, r);
+    }
+
+    private static void abrirSesion(HttpExchange intercambio, GestorCuentas.Resultado r) throws IOException {
         SESIONES.values().removeIf(SesionWeb::caducada);
         String token = nuevoToken();
         SESIONES.put(token, new SesionWeb(r.usuario(), System.currentTimeMillis()));
-        System.out.println("[*] " + r.usuario() + " inició sesión (web) desde " + origen(intercambio));
 
         GestorCuentas.Perfil perfil = GestorCuentas.obtenerPerfil(r.usuario());
         responder(intercambio, 200, true, r.mensaje(),
