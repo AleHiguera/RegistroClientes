@@ -33,6 +33,7 @@ import java.util.concurrent.Executors;
  *   POST /api/partida/crear   (mapa, jugadores como formulario; requiere sesión) → sala multijugador con su código
  *   POST /api/partida/unirse  (codigo como formulario; requiere sesión)          → sala a la que se entró
  *   POST /api/partida/estado  (codigo como formulario; requiere sesión)          → sala con sus jugadores actuales
+ *   POST /api/partida/iniciar (codigo como formulario; solo el anfitrión)        → sala ya comenzada
  *   POST /api/partida/salir   (codigo como formulario; requiere sesión)
  *   GET  /            página para aceptar el certificado en el navegador
  */
@@ -93,6 +94,7 @@ public final class ServidorWeb {
         servidor.createContext("/api/partida/crear", api(ServidorWeb::crearPartida));
         servidor.createContext("/api/partida/unirse", api(enSala(SalasMultijugador::unirse)));
         servidor.createContext("/api/partida/estado", api(enSala(SalasMultijugador::consultar)));
+        servidor.createContext("/api/partida/iniciar", api(enSala(SalasMultijugador::iniciar)));
         servidor.createContext("/api/partida/salir", api(enSala(SalasMultijugador::salir)));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();

@@ -49,6 +49,7 @@ final class Json {
                 + ",\"capacidad\":" + sala.capacidad()
                 + ",\"anfitrion\":" + texto(sala.anfitrion())
                 + ",\"jugadores\":" + jugadores
+                + ",\"comenzada\":" + sala.comenzada()
                 + "}";
     }
 }

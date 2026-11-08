@@ -8,6 +8,7 @@ import java.util.Map;
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
  * El anfitrión crea la sala y comparte su código; si el anfitrión sale, la sala se cierra para todos.
+ * Cuando el anfitrión la inicia ya no entra nadie nuevo: solo vuelven quienes ya estaban dentro.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -20,7 +21,8 @@ public final class SalasMultijugador {
     // Todos los métodos son synchronized: una sala llena no debe aceptar a dos jugadores a la vez.
     private static final Map<String, Sala> SALAS = new HashMap<>();
 
-    public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores) {}
+    public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
+                        boolean comenzada) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -39,6 +41,7 @@ public final class SalasMultijugador {
         private final String anfitrion;
         // usuario → momento de su última consulta, en orden de llegada
         private final Map<String, Long> jugadores = new LinkedHashMap<>();
+        private boolean comenzada;
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -49,7 +52,7 @@ public final class SalasMultijugador {
         }
 
         Vista vista() {
-            return new Vista(codigo, mapa, capacidad, anfitrion, List.copyOf(jugadores.keySet()));
+            return new Vista(codigo, mapa, capacidad, anfitrion, List.copyOf(jugadores.keySet()), comenzada);
         }
     }
 
@@ -77,6 +80,9 @@ public final class SalasMultijugador {
             return Resultado.error("No existe ninguna partida con ese código.");
         }
         if (!sala.jugadores.containsKey(usuario)) {
+            if (sala.comenzada) {
+                return Resultado.error("La partida ya comenzó.");
+            }
             if (sala.jugadores.size() >= sala.capacidad) {
                 return Resultado.error("La partida ya está llena.");
             }
@@ -84,6 +90,24 @@ public final class SalasMultijugador {
         }
         sala.jugadores.put(usuario, System.currentTimeMillis());
         return Resultado.ok("Te uniste a la partida.", sala.vista());
+    }
+
+    /** Solo el anfitrión la inicia, y no a solas: desde entonces nadie nuevo puede unirse. */
+    public static synchronized Resultado iniciar(String usuario, String codigo) {
+        quitarAusentes(System.currentTimeMillis());
+        Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
+        if (sala == null || !sala.jugadores.containsKey(usuario)) {
+            return Resultado.error("Esta partida ya no está disponible.");
+        }
+        if (!sala.anfitrion.equals(usuario)) {
+            return Resultado.error("Solo el anfitrión puede iniciar la partida.");
+        }
+        if (!sala.comenzada && sala.jugadores.size() < MIN_JUGADORES) {
+            return Resultado.error("Se necesitan al menos " + MIN_JUGADORES + " jugadores para empezar.");
+        }
+        sala.comenzada = true;
+        sala.jugadores.put(usuario, System.currentTimeMillis());
+        return Resultado.ok("La partida comenzó.", sala.vista());
     }
 
     /** Devuelve la sala tal como está ahora; cada consulta cuenta como señal de que el jugador sigue ahí. */

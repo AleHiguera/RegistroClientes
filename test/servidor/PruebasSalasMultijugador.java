@@ -25,6 +25,10 @@ final class PruebasSalasMultijugador {
         return SalasMultijugador.consultar(usuario, codigo).sala().jugadores();
     }
 
+    private static SalasMultijugador.Vista sala(String usuario, String codigo) {
+        return SalasMultijugador.consultar(usuario, codigo).sala();
+    }
+
     static void ejecutar() {
         caso("Solo se aceptan de 2 a 6 jugadores", () -> {
             cierto(!SalasMultijugador.crear("a1", 1, 1).exito(), "aceptó 1 jugador");
@@ -142,6 +146,63 @@ final class PruebasSalasMultijugador {
             String codigo = crear("a17", 2);
             SalasMultijugador.quitarAusentes(System.currentTimeMillis() + SalasMultijugador.SIN_CONTACTO_MAX_MS - 60_000L);
             cierto(SalasMultijugador.consultar("a17", codigo).exito(), "se quitó antes de tiempo");
+        });
+
+        caso("Una sala nueva todavía no ha comenzado", () ->
+                cierto(!SalasMultijugador.crear("a19", 1, 2).sala().comenzada(), "nació comenzada"));
+
+        caso("El anfitrión inicia la partida y todos lo ven", () -> {
+            String codigo = crear("a20", 3);
+            SalasMultijugador.unirse("b20", codigo);
+            var iniciada = SalasMultijugador.iniciar("a20", codigo);
+            cierto(iniciada.exito(), "no se pudo iniciar: " + iniciada.mensaje());
+            cierto(iniciada.sala().comenzada(), "no quedó comenzada");
+            cierto(sala("b20", codigo).comenzada(), "el invitado no lo ve");
+        });
+
+        caso("Nadie nuevo entra a una partida que ya comenzó", () -> {
+            String codigo = crear("a21", 4);
+            SalasMultijugador.unirse("b21", codigo);
+            SalasMultijugador.iniciar("a21", codigo);
+            iguales("La partida ya comenzó.", SalasMultijugador.unirse("c21", codigo).mensaje());
+            iguales(List.of("a21", "b21"), jugadores("a21", codigo));
+        });
+
+        caso("Quien ya estaba dentro puede volver aunque haya comenzado", () -> {
+            String codigo = crear("a22", 2);
+            SalasMultijugador.unirse("b22", codigo);
+            SalasMultijugador.iniciar("a22", codigo);
+            cierto(SalasMultijugador.unirse("b22", codigo).exito(), "no dejó volver a b22");
+            iguales(List.of("a22", "b22"), jugadores("a22", codigo));
+        });
+
+        caso("Quien sale de una partida comenzada ya no puede volver", () -> {
+            String codigo = crear("a23", 3);
+            SalasMultijugador.unirse("b23", codigo);
+            SalasMultijugador.iniciar("a23", codigo);
+            SalasMultijugador.salir("b23", codigo);
+            iguales("La partida ya comenzó.", SalasMultijugador.unirse("b23", codigo).mensaje());
+        });
+
+        caso("Solo el anfitrión puede iniciar la partida", () -> {
+            String codigo = crear("a24", 2);
+            SalasMultijugador.unirse("b24", codigo);
+            iguales("Solo el anfitrión puede iniciar la partida.", SalasMultijugador.iniciar("b24", codigo).mensaje());
+            iguales("Esta partida ya no está disponible.", SalasMultijugador.iniciar("intruso", codigo).mensaje());
+            cierto(!sala("a24", codigo).comenzada(), "la inició alguien que no era el anfitrión");
+        });
+
+        caso("El anfitrión no puede empezar a solas", () -> {
+            String codigo = crear("a25", 2);
+            iguales("Se necesitan al menos 2 jugadores para empezar.", SalasMultijugador.iniciar("a25", codigo).mensaje());
+            cierto(!sala("a25", codigo).comenzada(), "empezó con un solo jugador");
+        });
+
+        caso("Iniciar dos veces no es un error", () -> {
+            String codigo = crear("a26", 2);
+            SalasMultijugador.unirse("b26", codigo);
+            SalasMultijugador.iniciar("a26", codigo);
+            cierto(SalasMultijugador.iniciar("a26", codigo).exito(), "falló la segunda vez");
         });
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
