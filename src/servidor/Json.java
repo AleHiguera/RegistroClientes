@@ -1,6 +1,7 @@
 package servidor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
@@ -57,7 +58,18 @@ final class Json {
                 + ",\"ronda\":" + sala.ronda()
                 + ",\"dados\":" + numeros(sala.dados())
                 + ",\"jugaron\":" + lista(sala.jugaron())
+                + ",\"zonas\":" + zonas(sala.zonas())
                 + "}";
+    }
+
+    private static String zonas(Map<Integer, Map<String, Integer>> zonas) {
+        StringJoiner json = new StringJoiner(",", "{", "}");
+        zonas.forEach((zona, rondas) -> {
+            StringJoiner porJugador = new StringJoiner(",", "{", "}");
+            rondas.forEach((jugador, ronda) -> porJugador.add(texto(jugador) + ":" + ronda));
+            json.add("\"" + zona + "\":" + porJugador);
+        });
+        return json.toString();
     }
 
     private static String numeros(List<Integer> numeros) {

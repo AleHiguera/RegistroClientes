@@ -36,7 +36,7 @@ import java.util.concurrent.Executors;
  *   POST /api/partida/listo   (codigo como formulario; requiere sesión)          → sala; comienza si ya están todos
  *   POST /api/partida/no-listo (codigo como formulario; requiere sesión)         → sala
  *   POST /api/partida/finalizar (codigo, numeros como formulario; requiere sesión) → sala; guarda el tablero propio
- *   POST /api/partida/turno   (codigo, ronda, lleno como formulario; requiere sesión) → sala; quizá ya con otra ronda
+ *   POST /api/partida/turno   (codigo, ronda, lleno y zona si completó una; requiere sesión) → sala; quizá ya con otra ronda
  *   POST /api/partida/salir   (codigo como formulario; requiere sesión)
  *   GET  /            página para aceptar el certificado en el navegador
  */
@@ -298,8 +298,10 @@ public final class ServidorWeb {
         }
         String codigo = datos.get("codigo");
         int ronda;
+        Integer zona;
         try {
             ronda = Integer.parseInt(String.valueOf(datos.get("ronda")));
+            zona = datos.containsKey("zona") ? Integer.valueOf(datos.get("zona")) : null;
         } catch (NumberFormatException e) {
             responder(intercambio, 400, false, "Datos incompletos.");
             return;
@@ -309,7 +311,7 @@ public final class ServidorWeb {
             return;
         }
         responderSala(intercambio, SalasMultijugador.terminarTurno(sesion.usuario, codigo, ronda,
-                "true".equals(datos.get("lleno"))));
+                "true".equals(datos.get("lleno")), zona));
     }
 
     /** Las acciones sobre una sala ya creada: todas reciben solo su código. */

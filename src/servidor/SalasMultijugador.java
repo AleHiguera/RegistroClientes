@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
@@ -19,6 +20,8 @@ import java.util.Set;
  * se lanzan hasta que todos lo hayan hecho. Los tableros se guardan por usuario: nadie toca el de otro.
  * Los dados los lanza solo el servidor, un único resultado por ronda para toda la partida. La siguiente
  * ronda se lanza cuando todos jugaron la actual; quien llenó su tablero ya no hace esperar a nadie.
+ * También se registra en qué ronda completa cada jugador cada zona; los puntos los calcula la app, que
+ * conoce los mapas. El registro no se borra cuando alguien sale: su lugar queda ocupado y nadie sube.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -33,16 +36,20 @@ public final class SalasMultijugador {
 
     private static final List<Integer> NUMEROS_INICIALES = List.of(1, 2, 3, 4, 5, 6);
     private static final SecureRandom DADO = new SecureRandom();
+    // Un tablero tiene 49 celdas: no puede haber más zonas que esas.
+    private static final int MAX_ZONA = 49;
 
     /**
      * Lo que ve un jugador de la sala. [listos] y [finalizados] van en el mismo orden que [jugadores].
      * [miTablero] son los números iniciales de quien consulta (vacío si no ha finalizado): los ajenos no se envían.
      * [ronda] vale 0 hasta el primer lanzamiento, y entonces [dados] está vacío. [jugaron] son quienes ya no
-     * deben nada en esta ronda, incluidos los que llenaron su tablero.
+     * deben nada en esta ronda, incluidos los que llenaron su tablero. [zonas] dice, por número de zona, en
+     * qué ronda la completó cada jugador.
      */
     public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
                         List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
-                        List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron) {}
+                        List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron,
+                        Map<Integer, Map<String, Integer>> zonas) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -69,6 +76,8 @@ public final class SalasMultijugador {
         private List<Integer> dados = List.of();
         private final Set<String> jugaron = new HashSet<>();
         private final Set<String> tablerosLlenos = new HashSet<>();
+        // número de zona → usuario → ronda en que la completó
+        private final Map<Integer, Map<String, Integer>> zonas = new TreeMap<>();
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -86,7 +95,13 @@ public final class SalasMultijugador {
                     // Se calcula: quien falta y se va deja de frenar a los demás.
                     tablerosConfigurados(),
                     tableros.getOrDefault(usuario, List.of()), ronda, dados,
-                    enOrden.stream().filter(this::yaNoDebeNada).toList());
+                    enOrden.stream().filter(this::yaNoDebeNada).toList(), copiaDeZonas());
+        }
+
+        private Map<Integer, Map<String, Integer>> copiaDeZonas() {
+            Map<Integer, Map<String, Integer>> copia = new TreeMap<>();
+            zonas.forEach((zona, rondas) -> copia.put(zona, new LinkedHashMap<>(rondas)));
+            return copia;
         }
 
         boolean tablerosConfigurados() {
@@ -204,6 +219,15 @@ public final class SalasMultijugador {
      * (un reintento que llegó tarde) no cuenta, para que no se dé por jugada una ronda que ni siquiera vio.
      */
     public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno) {
+        return terminarTurno(usuario, codigo, ronda, tableroLleno, null);
+    }
+
+    /**
+     * Como el anterior, y además registra la zona que completó su movimiento, si completó una. Un jugador solo
+     * termina una vez cada ronda, así que tampoco puede declarar más de una zona por ronda.
+     */
+    public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno,
+                                                       Integer zona) {
         quitarAusentes(System.currentTimeMillis());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
@@ -213,7 +237,16 @@ public final class SalasMultijugador {
         if (ronda == 0 || ronda != sala.ronda) {
             return Resultado.ok("Esa ronda no está en juego.", sala.vista(usuario));
         }
+        if (zona != null && (zona < 1 || zona > MAX_ZONA)) {
+            return Resultado.error("Esa zona no existe.");
+        }
+        if (sala.jugaron.contains(usuario)) {
+            return Resultado.ok("Tu turno ya estaba terminado.", sala.vista(usuario));
+        }
         sala.jugaron.add(usuario);
+        if (zona != null) {
+            sala.zonas.computeIfAbsent(zona, nueva -> new LinkedHashMap<>()).putIfAbsent(usuario, ronda);
+        }
         if (tableroLleno) {
             sala.tablerosLlenos.add(usuario);
         }

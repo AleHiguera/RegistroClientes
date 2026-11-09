@@ -7,6 +7,7 @@ import static servidor.Pruebas.iguales;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,6 +61,10 @@ final class PruebasSalasMultijugador {
             SalasMultijugador.finalizarTablero(jugador, codigo, ORDEN);
         }
         return codigo;
+    }
+
+    private static void completar(String usuario, String codigo, int zona) {
+        SalasMultijugador.terminarTurno(usuario, codigo, sala(usuario, codigo).ronda(), false, zona);
     }
 
     private static void jugar(String usuario, String codigo) {
@@ -590,6 +595,96 @@ final class PruebasSalasMultijugador {
                 iguales(nueva.dados(), sala("a68", codigo).dados());
                 iguales(nueva.dados(), sala("b68", codigo).dados());
             }
+        });
+
+        caso("Al empezar no hay ninguna zona registrada", () ->
+                iguales(Map.of(), sala("a69", enJuego("a69", 2)).zonas()));
+
+        caso("Se registra en qué ronda completó la zona, y todos lo ven", () -> {
+            String codigo = enJuego("a70", 2);
+            jugar("a70", codigo);
+            jugar("b70", codigo);
+            completar("a70", codigo, 3);
+            iguales(Map.of(3, Map.of("a70", 2)), sala("b70", codigo).zonas());
+        });
+
+        caso("El registro guarda el orden de finalización por rondas", () -> {
+            String codigo = enJuegoDeTres("a71", "b71", "c71");
+            completar("a71", codigo, 3);
+            jugar("b71", codigo);
+            jugar("c71", codigo);
+            completar("b71", codigo, 3);
+            jugar("a71", codigo);
+            jugar("c71", codigo);
+            completar("c71", codigo, 3);
+            iguales(Map.of(3, Map.of("a71", 1, "b71", 2, "c71", 3)), sala("a71", codigo).zonas());
+        });
+
+        caso("Quienes completan la zona en la misma ronda quedan empatados", () -> {
+            String codigo = enJuegoDeTres("a72", "b72", "c72");
+            completar("c72", codigo, 3);
+            completar("a72", codigo, 3);
+            iguales(Map.of(3, Map.of("a72", 1, "c72", 1)), sala("b72", codigo).zonas());
+        });
+
+        caso("Cada zona tiene su propio registro", () -> {
+            String codigo = enJuego("a73", 2);
+            completar("a73", codigo, 3);
+            completar("b73", codigo, 5);
+            iguales(Map.of(3, Map.of("a73", 1), 5, Map.of("b73", 1)), sala("a73", codigo).zonas());
+        });
+
+        caso("Una zona ya completada conserva su primera ronda", () -> {
+            String codigo = enJuego("a74", 2);
+            completar("a74", codigo, 3);
+            jugar("b74", codigo);
+            completar("a74", codigo, 3);
+            iguales(Map.of(3, Map.of("a74", 1)), sala("a74", codigo).zonas());
+        });
+
+        caso("No se pueden declarar dos zonas en la misma ronda", () -> {
+            String codigo = enJuego("a75", 2);
+            completar("a75", codigo, 3);
+            completar("a75", codigo, 5);
+            iguales(Map.of(3, Map.of("a75", 1)), sala("b75", codigo).zonas());
+        });
+
+        caso("Una zona avisada para otra ronda no se registra", () -> {
+            String codigo = enJuego("a76", 2);
+            SalasMultijugador.terminarTurno("a76", codigo, 7, false, 3);
+            iguales(Map.of(), sala("a76", codigo).zonas());
+        });
+
+        caso("Quien no está en la partida no registra zonas", () -> {
+            String codigo = enJuego("a77", 2);
+            cierto(!SalasMultijugador.terminarTurno("intruso", codigo, 1, false, 3).exito(), "aceptó al intruso");
+            iguales(Map.of(), sala("a77", codigo).zonas());
+        });
+
+        caso("Una zona que no existe se rechaza y el turno no cuenta", () -> {
+            String codigo = enJuego("a78", 2);
+            for (int zona : List.of(0, -1, 50)) {
+                iguales("Esa zona no existe.", SalasMultijugador.terminarTurno("a78", codigo, 1, false, zona).mensaje());
+            }
+            iguales(List.of(), sala("a78", codigo).jugaron());
+            iguales(Map.of(), sala("a78", codigo).zonas());
+        });
+
+        caso("Si un jugador sale, su lugar queda ocupado", () -> {
+            String codigo = enJuegoDeTres("a79", "b79", "c79");
+            completar("b79", codigo, 3);
+            jugar("a79", codigo);
+            jugar("c79", codigo);
+            SalasMultijugador.salir("b79", codigo);
+            completar("c79", codigo, 3);
+            iguales(Map.of(3, Map.of("b79", 1, "c79", 2)), sala("a79", codigo).zonas());
+        });
+
+        caso("Si el anfitrión sale, su lugar también queda ocupado", () -> {
+            String codigo = enJuego("a80", 2);
+            completar("a80", codigo, 3);
+            SalasMultijugador.salir("a80", codigo);
+            iguales(Map.of(3, Map.of("a80", 1)), sala("b80", codigo).zonas());
         });
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.

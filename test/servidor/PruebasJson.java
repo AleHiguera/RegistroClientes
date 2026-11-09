@@ -4,6 +4,7 @@ import static servidor.Pruebas.caso;
 import static servidor.Pruebas.iguales;
 
 import java.util.List;
+import java.util.Map;
 
 final class PruebasJson {
     private PruebasJson() {}
@@ -18,12 +19,12 @@ final class PruebasJson {
         caso("La sala lleva números y una lista de jugadores", () -> {
             var sala = new SalasMultijugador.Vista("ABC234", 2, 3, "ana", List.of("ana", "lu\"is"),
                     List.of("lu\"is"), true, List.of("ana"), true, List.of(3, 1, 2, 6, 5, 4),
-                    2, List.of(5, 2), List.of("ana"));
+                    2, List.of(5, 2), List.of("ana"), Map.of(3, Map.of("lu\"is", 2)));
             iguales("{\"ok\":true,\"mensaje\":\"Sala.\",\"codigo\":\"ABC234\",\"mapa\":2,\"capacidad\":3,"
                             + "\"anfitrion\":\"ana\",\"jugadores\":[\"ana\",\"lu\\\"is\"],"
                             + "\"listos\":[\"lu\\\"is\"],\"comenzada\":true,"
                             + "\"finalizados\":[\"ana\"],\"configurada\":true,\"miTablero\":[3,1,2,6,5,4],"
-                            + "\"ronda\":2,\"dados\":[5,2],\"jugaron\":[\"ana\"]}",
+                            + "\"ronda\":2,\"dados\":[5,2],\"jugaron\":[\"ana\"],\"zonas\":{\"3\":{\"lu\\\"is\":2}}}",
                     Json.sala("Sala.", sala));
         });
     }
