@@ -35,6 +35,7 @@ import java.util.concurrent.Executors;
  *   POST /api/partida/estado  (codigo como formulario; requiere sesión)          → sala con sus jugadores actuales
  *   POST /api/partida/listo   (codigo como formulario; requiere sesión)          → sala; comienza si ya están todos
  *   POST /api/partida/no-listo (codigo como formulario; requiere sesión)         → sala
+ *   POST /api/partida/finalizar (codigo, numeros como formulario; requiere sesión) → sala; guarda el tablero propio
  *   POST /api/partida/salir   (codigo como formulario; requiere sesión)
  *   GET  /            página para aceptar el certificado en el navegador
  */
@@ -99,6 +100,7 @@ public final class ServidorWeb {
                 api(enSala((usuario, codigo) -> SalasMultijugador.marcarListo(usuario, codigo, true))));
         servidor.createContext("/api/partida/no-listo",
                 api(enSala((usuario, codigo) -> SalasMultijugador.marcarListo(usuario, codigo, false))));
+        servidor.createContext("/api/partida/finalizar", api(ServidorWeb::finalizarTablero));
         servidor.createContext("/api/partida/salir", api(enSala(SalasMultijugador::salir)));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();
@@ -261,6 +263,25 @@ public final class ServidorWeb {
             System.out.println("[*] " + sesion.usuario + " creó la partida " + r.sala().codigo());
         }
         responderSala(intercambio, r);
+    }
+
+    /** El jugador sale de la sesión, nunca del formulario: así solo puede finalizar su propio tablero. */
+    private static void finalizarTablero(HttpExchange intercambio) throws IOException {
+        SesionWeb sesion = sesionActiva(intercambio);
+        if (sesion == null) {
+            return;
+        }
+        Map<String, String> datos = leerFormulario(intercambio);
+        if (datos == null) {
+            return;
+        }
+        String codigo = datos.get("codigo");
+        String numeros = datos.get("numeros");
+        if (codigo == null || numeros == null) {
+            responder(intercambio, 400, false, "Datos incompletos.");
+            return;
+        }
+        responderSala(intercambio, SalasMultijugador.finalizarTablero(sesion.usuario, codigo, numeros));
     }
 
     /** Las acciones sobre una sala ya creada: todas reciben solo su código. */

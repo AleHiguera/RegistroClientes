@@ -2,6 +2,7 @@ package servidor;
 
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 
 /** Escribe los JSON que responde la API web. */
 final class Json {
@@ -50,6 +51,10 @@ final class Json {
                 + ",\"jugadores\":" + lista(sala.jugadores())
                 + ",\"listos\":" + lista(sala.listos())
                 + ",\"comenzada\":" + sala.comenzada()
+                + ",\"finalizados\":" + lista(sala.finalizados())
+                + ",\"configurada\":" + sala.configurada()
+                + ",\"miTablero\":" + sala.miTablero()
+                .stream().map(String::valueOf).collect(Collectors.joining(",", "[", "]"))
                 + "}";
     }
 

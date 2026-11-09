@@ -14,6 +14,8 @@ import java.util.concurrent.Future;
 
 final class PruebasSalasMultijugador {
     private static final long TRAS_AUSENCIA = SalasMultijugador.SIN_CONTACTO_MAX_MS + 60_000L;
+    private static final String ORDEN = "1,2,3,4,5,6";
+    private static final String OTRO_ORDEN = "6,5,4,3,2,1";
 
     private PruebasSalasMultijugador() {}
 
@@ -271,6 +273,74 @@ final class PruebasSalasMultijugador {
             cierto(SalasMultijugador.marcarListo("b33", codigo, false).exito(), "falló al desmarcarse");
             cierto(sala("a33", codigo).comenzada(), "la partida dejó de estar comenzada");
             iguales(List.of("a33", "b33"), sala("a33", codigo).listos());
+        });
+
+        caso("Al comenzar nadie ha finalizado su tablero", () -> {
+            var vista = sala("a34", comenzada("a34", 2));
+            iguales(List.of(), vista.finalizados());
+            cierto(!vista.configurada(), "ya estaba configurada");
+            iguales(List.of(), vista.miTablero());
+        });
+
+        caso("Antes de comenzar no se puede finalizar el tablero", () -> {
+            String codigo = crear("a35", 2);
+            iguales("La partida todavía no comienza.",
+                    SalasMultijugador.finalizarTablero("a35", codigo, ORDEN).mensaje());
+        });
+
+        caso("Sin todos los tableros los dados no se liberan", () -> {
+            String codigo = comenzada("a36", 2);
+            var vista = SalasMultijugador.finalizarTablero("a36", codigo, ORDEN).sala();
+            iguales(List.of("a36"), vista.finalizados());
+            cierto(!vista.configurada(), "se configuró con un tablero pendiente");
+        });
+
+        caso("Con todos los tableros finalizados la partida queda configurada", () -> {
+            String codigo = comenzada("a37", 2);
+            SalasMultijugador.finalizarTablero("a37", codigo, ORDEN);
+            var vista = SalasMultijugador.finalizarTablero("b37", codigo, OTRO_ORDEN).sala();
+            iguales(List.of("a37", "b37"), vista.finalizados());
+            cierto(vista.configurada(), "no quedó configurada");
+            cierto(sala("a37", codigo).configurada(), "el otro jugador no lo ve");
+        });
+
+        caso("Cada jugador conserva su propio orden y no ve el ajeno", () -> {
+            String codigo = comenzada("a38", 2);
+            SalasMultijugador.finalizarTablero("a38", codigo, ORDEN);
+            iguales(List.of(), sala("b38", codigo).miTablero());
+            SalasMultijugador.finalizarTablero("b38", codigo, OTRO_ORDEN);
+            iguales(List.of(1, 2, 3, 4, 5, 6), sala("a38", codigo).miTablero());
+            iguales(List.of(6, 5, 4, 3, 2, 1), sala("b38", codigo).miTablero());
+        });
+
+        caso("Un tablero finalizado ya no cambia", () -> {
+            String codigo = comenzada("a39", 3);
+            SalasMultijugador.finalizarTablero("a39", codigo, ORDEN);
+            cierto(SalasMultijugador.finalizarTablero("a39", codigo, OTRO_ORDEN).exito(), "el reintento falló");
+            iguales(List.of(1, 2, 3, 4, 5, 6), sala("a39", codigo).miTablero());
+        });
+
+        caso("Quien no está en la sala no puede finalizar", () -> {
+            String codigo = comenzada("a40", 2);
+            iguales("Esta partida ya no está disponible.",
+                    SalasMultijugador.finalizarTablero("intruso", codigo, ORDEN).mensaje());
+            iguales(List.of(), sala("a40", codigo).finalizados());
+        });
+
+        caso("Solo se aceptan los números del 1 al 6 sin repetir", () -> {
+            String codigo = comenzada("a41", 2);
+            for (String malo : List.of("", "1,2,3", "1,1,2,3,4,5", "0,1,2,3,4,5", "2,3,4,5,6,7", "1,2,3,4,5,x",
+                    "1,2,3,4,5,6,6")) {
+                cierto(!SalasMultijugador.finalizarTablero("a41", codigo, malo).exito(), "aceptó " + malo);
+            }
+            iguales(List.of(), sala("a41", codigo).finalizados());
+        });
+
+        caso("Si se va el único que faltaba, los demás ya no esperan", () -> {
+            String codigo = comenzada("a42", 2);
+            SalasMultijugador.finalizarTablero("a42", codigo, ORDEN);
+            SalasMultijugador.salir("b42", codigo);
+            cierto(sala("a42", codigo).configurada(), "siguió esperando a quien se fue");
         });
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
