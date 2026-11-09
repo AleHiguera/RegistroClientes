@@ -527,6 +527,71 @@ final class PruebasSalasMultijugador {
             iguales("No existe ninguna partida con ese código.", SalasMultijugador.unirse("b62", codigo).mensaje());
         });
 
+        caso("Insistir no provoca un lanzamiento mientras otros juegan", () -> {
+            String codigo = enJuegoDeTres("a64", "b64", "c64");
+            var dados = sala("a64", codigo).dados();
+            for (int i = 0; i < 5; i++) {
+                SalasMultijugador.terminarTurno("a64", codigo, 1, false);
+            }
+            SalasMultijugador.terminarTurno("a64", codigo, 2, false);
+            var vista = sala("b64", codigo);
+            iguales(1, vista.ronda());
+            iguales(dados, vista.dados());
+            iguales(List.of("a64"), vista.jugaron());
+        });
+
+        caso("Ninguna otra acción de un jugador lanza los dados", () -> {
+            String codigo = enJuegoDeTres("a65", "b65", "c65");
+            var dados = sala("a65", codigo).dados();
+            SalasMultijugador.finalizarTablero("a65", codigo, ORDEN);
+            SalasMultijugador.marcarListo("a65", codigo, true);
+            SalasMultijugador.marcarListo("a65", codigo, false);
+            SalasMultijugador.unirse("a65", codigo);
+            SalasMultijugador.salir("intruso", codigo);
+            var vista = sala("a65", codigo);
+            iguales(1, vista.ronda());
+            iguales(dados, vista.dados());
+        });
+
+        caso("Declarar lleno el propio tablero no juega por los demás", () -> {
+            String codigo = enJuegoDeTres("a66", "b66", "c66");
+            SalasMultijugador.terminarTurno("a66", codigo, 1, true);
+            iguales(1, sala("b66", codigo).ronda());
+        });
+
+        caso("Si se va quien ya jugó, se sigue esperando a los que faltan", () -> {
+            String codigo = enJuegoDeTres("a67", "b67", "c67");
+            jugar("b67", codigo);
+            SalasMultijugador.salir("b67", codigo);
+            var vista = sala("a67", codigo);
+            iguales(1, vista.ronda());
+            iguales(List.of(), vista.jugaron());
+            jugar("a67", codigo);
+            iguales(1, sala("c67", codigo).ronda());
+            jugar("c67", codigo);
+            iguales(2, sala("a67", codigo).ronda());
+        });
+
+        caso("El mismo procedimiento se repite ronda tras ronda", () -> {
+            String codigo = enJuegoDeTres("a68", "b68", "c68");
+            for (int ronda = 1; ronda <= 10; ronda++) {
+                final int esperada = ronda;
+                var dados = sala("a68", codigo).dados();
+                jugar("c68", codigo);
+                iguales(List.of("c68"), sala("a68", codigo).jugaron());
+                jugar("a68", codigo);
+                iguales(List.of("a68", "c68"), sala("b68", codigo).jugaron());
+                iguales(esperada, sala("b68", codigo).ronda());
+                iguales(dados, sala("b68", codigo).dados());
+                jugar("b68", codigo);
+                var nueva = sala("c68", codigo);
+                iguales(esperada + 1, nueva.ronda());
+                iguales(List.of(), nueva.jugaron());
+                iguales(nueva.dados(), sala("a68", codigo).dados());
+                iguales(nueva.dados(), sala("b68", codigo).dados());
+            }
+        });
+
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
         caso("Tras 5 minutos sin consultar el anfitrión pierde la sala", () -> {
             String codigo = crear("a18", 2);
