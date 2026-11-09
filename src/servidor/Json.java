@@ -53,9 +53,15 @@ final class Json {
                 + ",\"comenzada\":" + sala.comenzada()
                 + ",\"finalizados\":" + lista(sala.finalizados())
                 + ",\"configurada\":" + sala.configurada()
-                + ",\"miTablero\":" + sala.miTablero()
-                .stream().map(String::valueOf).collect(Collectors.joining(",", "[", "]"))
+                + ",\"miTablero\":" + numeros(sala.miTablero())
+                + ",\"ronda\":" + sala.ronda()
+                + ",\"dados\":" + numeros(sala.dados())
+                + ",\"jugaron\":" + lista(sala.jugaron())
                 + "}";
+    }
+
+    private static String numeros(List<Integer> numeros) {
+        return numeros.stream().map(String::valueOf).collect(Collectors.joining(",", "[", "]"));
     }
 
     private static String lista(List<String> textos) {

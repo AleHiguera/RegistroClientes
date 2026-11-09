@@ -17,11 +17,13 @@ final class PruebasJson {
 
         caso("La sala lleva números y una lista de jugadores", () -> {
             var sala = new SalasMultijugador.Vista("ABC234", 2, 3, "ana", List.of("ana", "lu\"is"),
-                    List.of("lu\"is"), true, List.of("ana"), false, List.of(3, 1, 2, 6, 5, 4));
+                    List.of("lu\"is"), true, List.of("ana"), true, List.of(3, 1, 2, 6, 5, 4),
+                    2, List.of(5, 2), List.of("ana"));
             iguales("{\"ok\":true,\"mensaje\":\"Sala.\",\"codigo\":\"ABC234\",\"mapa\":2,\"capacidad\":3,"
                             + "\"anfitrion\":\"ana\",\"jugadores\":[\"ana\",\"lu\\\"is\"],"
                             + "\"listos\":[\"lu\\\"is\"],\"comenzada\":true,"
-                            + "\"finalizados\":[\"ana\"],\"configurada\":false,\"miTablero\":[3,1,2,6,5,4]}",
+                            + "\"finalizados\":[\"ana\"],\"configurada\":true,\"miTablero\":[3,1,2,6,5,4],"
+                            + "\"ronda\":2,\"dados\":[5,2],\"jugaron\":[\"ana\"]}",
                     Json.sala("Sala.", sala));
         });
     }

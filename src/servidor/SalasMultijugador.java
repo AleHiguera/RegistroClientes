@@ -1,5 +1,6 @@
 package servidor;
 
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,6 +16,8 @@ import java.util.Set;
  * Desde entonces ya no entra nadie nuevo: solo vuelven quienes ya estaban dentro.
  * Al comenzar, cada jugador coloca los números iniciales de su propio tablero y lo finaliza; los dados no
  * se lanzan hasta que todos lo hayan hecho. Los tableros se guardan por usuario: nadie toca el de otro.
+ * Los dados los lanza solo el servidor, un único resultado por ronda para toda la partida. La siguiente
+ * ronda se lanza cuando todos jugaron la actual; quien llenó su tablero ya no hace esperar a nadie.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -28,14 +31,17 @@ public final class SalasMultijugador {
     private static final Map<String, Sala> SALAS = new HashMap<>();
 
     private static final List<Integer> NUMEROS_INICIALES = List.of(1, 2, 3, 4, 5, 6);
+    private static final SecureRandom DADO = new SecureRandom();
 
     /**
      * Lo que ve un jugador de la sala. [listos] y [finalizados] van en el mismo orden que [jugadores].
      * [miTablero] son los números iniciales de quien consulta (vacío si no ha finalizado): los ajenos no se envían.
+     * [ronda] vale 0 hasta el primer lanzamiento, y entonces [dados] está vacío. [jugaron] son quienes ya no
+     * deben nada en esta ronda, incluidos los que llenaron su tablero.
      */
     public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
                         List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
-                        List<Integer> miTablero) {}
+                        List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -58,6 +64,10 @@ public final class SalasMultijugador {
         private boolean comenzada;
         // usuario → sus números iniciales, en el orden de las celdas iniciales del mapa
         private final Map<String, List<Integer>> tableros = new HashMap<>();
+        private int ronda;
+        private List<Integer> dados = List.of();
+        private final Set<String> jugaron = new HashSet<>();
+        private final Set<String> tablerosLlenos = new HashSet<>();
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -73,8 +83,28 @@ public final class SalasMultijugador {
                     enOrden.stream().filter(listos::contains).toList(), comenzada,
                     enOrden.stream().filter(tableros::containsKey).toList(),
                     // Se calcula: quien falta y se va deja de frenar a los demás.
-                    comenzada && tableros.keySet().containsAll(jugadores.keySet()),
-                    tableros.getOrDefault(usuario, List.of()));
+                    tablerosConfigurados(),
+                    tableros.getOrDefault(usuario, List.of()), ronda, dados,
+                    enOrden.stream().filter(this::yaNoDebeNada).toList());
+        }
+
+        boolean tablerosConfigurados() {
+            return comenzada && tableros.keySet().containsAll(jugadores.keySet());
+        }
+
+        boolean yaNoDebeNada(String jugador) {
+            return jugaron.contains(jugador) || tablerosLlenos.contains(jugador);
+        }
+
+        /** Lanza los dados en cuanto no se espera a nadie, salvo que ya todos hayan llenado su tablero. */
+        void lanzarSiToca() {
+            boolean rondaTerminada = ronda == 0 || jugadores.keySet().stream().allMatch(this::yaNoDebeNada);
+            boolean quedaQuienJuegue = !tablerosLlenos.containsAll(jugadores.keySet());
+            if (tablerosConfigurados() && rondaTerminada && quedaQuienJuegue) {
+                ronda++;
+                dados = List.of(DADO.nextInt(6) + 1, DADO.nextInt(6) + 1);
+                jugaron.clear();
+            }
         }
 
         /** La partida empieza en cuanto no falta nadie por confirmar. */
@@ -164,7 +194,30 @@ public final class SalasMultijugador {
             return Resultado.error("Los números iniciales deben ser del 1 al 6, sin repetir.");
         }
         sala.tableros.put(usuario, leidos);
+        sala.lanzarSiToca();
         return Resultado.ok("Tablero finalizado.", sala.vista(usuario));
+    }
+
+    /**
+     * El jugador ya movió o pasó en [ronda]; con [tableroLleno] ya no jugará más rondas. Un aviso de otra ronda
+     * (un reintento que llegó tarde) no cuenta, para que no se dé por jugada una ronda que ni siquiera vio.
+     */
+    public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno) {
+        quitarAusentes(System.currentTimeMillis());
+        Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
+        if (sala == null || !sala.jugadores.containsKey(usuario)) {
+            return Resultado.error("Esta partida ya no está disponible.");
+        }
+        sala.jugadores.put(usuario, System.currentTimeMillis());
+        if (ronda == 0 || ronda != sala.ronda) {
+            return Resultado.ok("Esa ronda no está en juego.", sala.vista(usuario));
+        }
+        sala.jugaron.add(usuario);
+        if (tableroLleno) {
+            sala.tablerosLlenos.add(usuario);
+        }
+        sala.lanzarSiToca();
+        return Resultado.ok("Turno terminado.", sala.vista(usuario));
     }
 
     /** Los números separados por comas, o null si no son exactamente del 1 al 6 sin repetir. */
@@ -219,8 +272,11 @@ public final class SalasMultijugador {
         } else if (sala.jugadores.remove(usuario) != null) {
             sala.listos.remove(usuario);
             sala.tableros.remove(usuario);
-            // Si el que se fue era el único que faltaba por confirmar, ya están todos.
+            sala.jugaron.remove(usuario);
+            sala.tablerosLlenos.remove(usuario);
+            // Si el que se fue era el único al que se esperaba, ya no hay por qué seguir esperando.
             sala.comenzarSiTodosListos();
+            sala.lanzarSiToca();
         }
     }
 }

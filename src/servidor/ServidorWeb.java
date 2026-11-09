@@ -36,6 +36,7 @@ import java.util.concurrent.Executors;
  *   POST /api/partida/listo   (codigo como formulario; requiere sesión)          → sala; comienza si ya están todos
  *   POST /api/partida/no-listo (codigo como formulario; requiere sesión)         → sala
  *   POST /api/partida/finalizar (codigo, numeros como formulario; requiere sesión) → sala; guarda el tablero propio
+ *   POST /api/partida/turno   (codigo, ronda, lleno como formulario; requiere sesión) → sala; quizá ya con otra ronda
  *   POST /api/partida/salir   (codigo como formulario; requiere sesión)
  *   GET  /            página para aceptar el certificado en el navegador
  */
@@ -101,6 +102,7 @@ public final class ServidorWeb {
         servidor.createContext("/api/partida/no-listo",
                 api(enSala((usuario, codigo) -> SalasMultijugador.marcarListo(usuario, codigo, false))));
         servidor.createContext("/api/partida/finalizar", api(ServidorWeb::finalizarTablero));
+        servidor.createContext("/api/partida/turno", api(ServidorWeb::terminarTurno));
         servidor.createContext("/api/partida/salir", api(enSala(SalasMultijugador::salir)));
         servidor.setExecutor(Executors.newFixedThreadPool(16));
         servidor.start();
@@ -282,6 +284,32 @@ public final class ServidorWeb {
             return;
         }
         responderSala(intercambio, SalasMultijugador.finalizarTablero(sesion.usuario, codigo, numeros));
+    }
+
+    /** Como al finalizar, el jugador sale de la sesión: nadie puede dar por jugado el turno de otro. */
+    private static void terminarTurno(HttpExchange intercambio) throws IOException {
+        SesionWeb sesion = sesionActiva(intercambio);
+        if (sesion == null) {
+            return;
+        }
+        Map<String, String> datos = leerFormulario(intercambio);
+        if (datos == null) {
+            return;
+        }
+        String codigo = datos.get("codigo");
+        int ronda;
+        try {
+            ronda = Integer.parseInt(String.valueOf(datos.get("ronda")));
+        } catch (NumberFormatException e) {
+            responder(intercambio, 400, false, "Datos incompletos.");
+            return;
+        }
+        if (codigo == null) {
+            responder(intercambio, 400, false, "Datos incompletos.");
+            return;
+        }
+        responderSala(intercambio, SalasMultijugador.terminarTurno(sesion.usuario, codigo, ronda,
+                "true".equals(datos.get("lleno"))));
     }
 
     /** Las acciones sobre una sala ya creada: todas reciben solo su código. */
