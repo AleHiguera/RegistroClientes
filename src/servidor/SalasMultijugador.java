@@ -11,7 +11,8 @@ import java.util.Set;
 
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
- * El anfitrión crea la sala y comparte su código; si el anfitrión sale, la sala se cierra para todos.
+ * El anfitrión crea la sala y comparte su código; si sale antes de comenzar, la sala se cierra para todos.
+ * Ya comenzada, el anfitrión es un jugador más: la partida sigue hasta que no quede nadie.
  * Cada jugador se marca como listo; cuando lo están todos (y son al menos dos) la partida comienza sola.
  * Desde entonces ya no entra nadie nuevo: solo vuelven quienes ya estaban dentro.
  * Al comenzar, cada jugador coloca los números iniciales de su propio tablero y lo finaliza; los dados no
@@ -267,13 +268,17 @@ public final class SalasMultijugador {
     }
 
     private static void sacar(String usuario, Sala sala) {
-        if (sala.anfitrion.equals(usuario)) {
+        if (sala.anfitrion.equals(usuario) && !sala.comenzada) {
             SALAS.remove(sala.codigo);
         } else if (sala.jugadores.remove(usuario) != null) {
             sala.listos.remove(usuario);
             sala.tableros.remove(usuario);
             sala.jugaron.remove(usuario);
             sala.tablerosLlenos.remove(usuario);
+            if (sala.jugadores.isEmpty()) {
+                SALAS.remove(sala.codigo);
+                return;
+            }
             // Si el que se fue era el único al que se esperaba, ya no hay por qué seguir esperando.
             sala.comenzarSiTodosListos();
             sala.lanzarSiToca();

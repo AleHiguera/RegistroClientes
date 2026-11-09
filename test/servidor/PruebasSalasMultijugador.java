@@ -483,6 +483,50 @@ final class PruebasSalasMultijugador {
             iguales(1, sala("a56", codigo).ronda());
         });
 
+        caso("Si el anfitrión sale de una partida comenzada, sigue para los demás", () -> {
+            String codigo = enJuegoDeTres("a57", "b57", "c57");
+            SalasMultijugador.salir("a57", codigo);
+            iguales(List.of("b57", "c57"), jugadores("b57", codigo));
+            iguales(1, sala("c57", codigo).ronda());
+        });
+
+        caso("Si el anfitrión era el único que faltaba se lanza la siguiente ronda", () -> {
+            String codigo = enJuegoDeTres("a58", "b58", "c58");
+            jugar("b58", codigo);
+            jugar("c58", codigo);
+            SalasMultijugador.salir("a58", codigo);
+            iguales(2, sala("b58", codigo).ronda());
+        });
+
+        caso("Si el anfitrión sale mientras colocan los números, no se les espera", () -> {
+            String codigo = comenzada("a59", 2);
+            SalasMultijugador.finalizarTablero("b59", codigo, ORDEN);
+            SalasMultijugador.salir("a59", codigo);
+            var vista = sala("b59", codigo);
+            cierto(vista.configurada(), "siguió esperando al anfitrión");
+            iguales(1, vista.ronda());
+        });
+
+        caso("El anfitrión que sale de una partida comenzada ya no puede volver", () -> {
+            String codigo = enJuego("a60", 2);
+            SalasMultijugador.salir("a60", codigo);
+            iguales("La partida ya comenzó.", SalasMultijugador.unirse("a60", codigo).mensaje());
+            cierto(!SalasMultijugador.consultar("a60", codigo).exito(), "siguió viendo la partida");
+        });
+
+        caso("Crear otra sala no cierra la partida comenzada que el anfitrión dejó", () -> {
+            String codigo = enJuego("a61", 2);
+            SalasMultijugador.crear("a61", 1, 2);
+            iguales(List.of("b61"), jugadores("b61", codigo));
+        });
+
+        caso("Cuando sale el último jugador la partida desaparece", () -> {
+            String codigo = enJuego("a62", 2);
+            SalasMultijugador.salir("a62", codigo);
+            SalasMultijugador.salir("b62", codigo);
+            iguales("No existe ninguna partida con ese código.", SalasMultijugador.unirse("b62", codigo).mensaje());
+        });
+
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
         caso("Tras 5 minutos sin consultar el anfitrión pierde la sala", () -> {
             String codigo = crear("a18", 2);
