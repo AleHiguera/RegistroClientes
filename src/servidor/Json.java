@@ -1,5 +1,6 @@
 package servidor;
 
+import java.util.List;
 import java.util.StringJoiner;
 
 /** Escribe los JSON que responde la API web. */
@@ -40,16 +41,21 @@ final class Json {
 
     /** Respuesta correcta con una sala: la lista de jugadores y los números no son textos sueltos. */
     static String sala(String mensaje, SalasMultijugador.Vista sala) {
-        StringJoiner jugadores = new StringJoiner(",", "[", "]");
-        sala.jugadores().forEach(jugador -> jugadores.add(texto(jugador)));
         return "{\"ok\":true"
                 + ",\"mensaje\":" + texto(mensaje)
                 + ",\"codigo\":" + texto(sala.codigo())
                 + ",\"mapa\":" + sala.mapa()
                 + ",\"capacidad\":" + sala.capacidad()
                 + ",\"anfitrion\":" + texto(sala.anfitrion())
-                + ",\"jugadores\":" + jugadores
+                + ",\"jugadores\":" + lista(sala.jugadores())
+                + ",\"listos\":" + lista(sala.listos())
                 + ",\"comenzada\":" + sala.comenzada()
                 + "}";
+    }
+
+    private static String lista(List<String> textos) {
+        StringJoiner lista = new StringJoiner(",", "[", "]");
+        textos.forEach(elemento -> lista.add(texto(elemento)));
+        return lista.toString();
     }
 }

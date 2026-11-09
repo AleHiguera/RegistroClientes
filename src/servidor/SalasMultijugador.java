@@ -1,14 +1,17 @@
 package servidor;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
  * El anfitrión crea la sala y comparte su código; si el anfitrión sale, la sala se cierra para todos.
- * Cuando el anfitrión la inicia ya no entra nadie nuevo: solo vuelven quienes ya estaban dentro.
+ * Cada jugador se marca como listo; cuando lo están todos (y son al menos dos) la partida comienza sola.
+ * Desde entonces ya no entra nadie nuevo: solo vuelven quienes ya estaban dentro.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -21,8 +24,9 @@ public final class SalasMultijugador {
     // Todos los métodos son synchronized: una sala llena no debe aceptar a dos jugadores a la vez.
     private static final Map<String, Sala> SALAS = new HashMap<>();
 
+    /** [listos] va en el mismo orden que [jugadores]. */
     public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
-                        boolean comenzada) {}
+                        List<String> listos, boolean comenzada) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -41,6 +45,7 @@ public final class SalasMultijugador {
         private final String anfitrion;
         // usuario → momento de su última consulta, en orden de llegada
         private final Map<String, Long> jugadores = new LinkedHashMap<>();
+        private final Set<String> listos = new HashSet<>();
         private boolean comenzada;
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
@@ -52,7 +57,16 @@ public final class SalasMultijugador {
         }
 
         Vista vista() {
-            return new Vista(codigo, mapa, capacidad, anfitrion, List.copyOf(jugadores.keySet()), comenzada);
+            List<String> enOrden = List.copyOf(jugadores.keySet());
+            return new Vista(codigo, mapa, capacidad, anfitrion, enOrden,
+                    enOrden.stream().filter(listos::contains).toList(), comenzada);
+        }
+
+        /** La partida empieza en cuanto no falta nadie por confirmar. */
+        void comenzarSiTodosListos() {
+            if (!comenzada && jugadores.size() >= MIN_JUGADORES && listos.containsAll(jugadores.keySet())) {
+                comenzada = true;
+            }
         }
     }
 
@@ -92,22 +106,24 @@ public final class SalasMultijugador {
         return Resultado.ok("Te uniste a la partida.", sala.vista());
     }
 
-    /** Solo el anfitrión la inicia, y no a solas: desde entonces nadie nuevo puede unirse. */
-    public static synchronized Resultado iniciar(String usuario, String codigo) {
+    /** Marca o desmarca al jugador como listo; si con eso ya están todos, la partida comienza. */
+    public static synchronized Resultado marcarListo(String usuario, String codigo, boolean listo) {
         quitarAusentes(System.currentTimeMillis());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
             return Resultado.error("Esta partida ya no está disponible.");
         }
-        if (!sala.anfitrion.equals(usuario)) {
-            return Resultado.error("Solo el anfitrión puede iniciar la partida.");
-        }
-        if (!sala.comenzada && sala.jugadores.size() < MIN_JUGADORES) {
-            return Resultado.error("Se necesitan al menos " + MIN_JUGADORES + " jugadores para empezar.");
-        }
-        sala.comenzada = true;
         sala.jugadores.put(usuario, System.currentTimeMillis());
-        return Resultado.ok("La partida comenzó.", sala.vista());
+        if (sala.comenzada) {
+            return Resultado.ok("La partida ya comenzó.", sala.vista());
+        }
+        if (listo) {
+            sala.listos.add(usuario);
+        } else {
+            sala.listos.remove(usuario);
+        }
+        sala.comenzarSiTodosListos();
+        return Resultado.ok(sala.comenzada ? "La partida comenzó." : "Estado actualizado.", sala.vista());
     }
 
     /** Devuelve la sala tal como está ahora; cada consulta cuenta como señal de que el jugador sigue ahí. */
@@ -149,8 +165,10 @@ public final class SalasMultijugador {
     private static void sacar(String usuario, Sala sala) {
         if (sala.anfitrion.equals(usuario)) {
             SALAS.remove(sala.codigo);
-        } else {
-            sala.jugadores.remove(usuario);
+        } else if (sala.jugadores.remove(usuario) != null) {
+            sala.listos.remove(usuario);
+            // Si el que se fue era el único que faltaba por confirmar, ya están todos.
+            sala.comenzarSiTodosListos();
         }
     }
 }
