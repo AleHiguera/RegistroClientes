@@ -4,11 +4,44 @@ import static servidor.Pruebas.caso;
 import static servidor.Pruebas.cierto;
 import static servidor.Pruebas.iguales;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 final class PruebasPuntuacion {
+    /**
+     * Los mismos casos que test/ganadores_compartidos_test.dart de brilliantdart: la app arma la clasificación con
+     * su propio código y debe dar los mismos ganadores. Si se cambia uno, hay que cambiar el otro.
+     * Cada caso es: mapa | zona:jugador=ronda,...;zona:... | jugadores | ganadores
+     */
+    static final List<String> CASOS_COMPARTIDOS = List.of(
+            "1|1:ana=1,luis=2;3:luis=1,eva=1|ana,luis,eva|luis",
+            "1|1:ana=1,luis=1|ana,luis,eva|ana,luis",
+            "1|1:salio=1|ana|salio",
+            "1||ana,luis|ana,luis",
+            "3|3:eva=2,ana=5;6:ana=1|ana,eva|ana",
+            "4|2:a=1,b=1,c=2;4:c=1|a,b,c|c",
+            "1|1:a=1,b=2,c=3,d=4;9:d=1|a,b,c,d|a");
+
     private PruebasPuntuacion() {}
+
+    private static Map<Integer, Map<String, Integer>> zonas(String texto) {
+        Map<Integer, Map<String, Integer>> zonas = new TreeMap<>();
+        if (texto.isEmpty()) {
+            return zonas;
+        }
+        for (String zona : texto.split(";")) {
+            String[] partes = zona.split(":");
+            Map<String, Integer> rondas = new LinkedHashMap<>();
+            for (String par : partes[1].split(",")) {
+                String[] jugadorYRonda = par.split("=");
+                rondas.put(jugadorYRonda[0], Integer.valueOf(jugadorYRonda[1]));
+            }
+            zonas.put(Integer.valueOf(partes[0]), rondas);
+        }
+        return zonas;
+    }
 
     static void ejecutar() {
         caso("La meta depende de cuántos jugadores empezaron", () -> {
@@ -55,6 +88,21 @@ final class PruebasPuntuacion {
 
         caso("Quien salió también puede tener más puntos", () ->
                 iguales(List.of("salio"), Puntuacion.ganadores(Map.of("salio", 9, "a", 2), List.of("a"))));
+
+        for (String texto : CASOS_COMPARTIDOS) {
+            caso("Coincide con la app: " + texto, () -> {
+                // split con -1 conserva la parte vacía de "sin zonas".
+                String[] partes = texto.split("\\|", -1);
+                int mapa = Integer.parseInt(partes[0]);
+                var puntos = Puntuacion.puntos(mapa, zonas(partes[1]));
+                iguales(List.of(partes[3].split(",")),
+                        Puntuacion.ganadores(puntos, List.of(partes[2].split(","))));
+            });
+        }
+
+        caso("Se lee bien un caso compartido", () ->
+                iguales(Map.of(1, Map.of("ana", 1, "luis", 2), 3, Map.of("luis", 1)),
+                        zonas("1:ana=1,luis=2;3:luis=1")));
 
         caso("Si nadie tiene puntos, empatan todos los que siguen", () -> {
             var ganadores = Puntuacion.ganadores(Map.of(), List.of("a", "b"));
