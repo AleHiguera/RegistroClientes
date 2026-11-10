@@ -89,6 +89,23 @@ final class PruebasPuntuacion {
         caso("Quien salió también puede tener más puntos", () ->
                 iguales(List.of("salio"), Puntuacion.ganadores(Map.of("salio", 9, "a", 2), List.of("a"))));
 
+        caso("Ejemplo A: con 3 jugadores, 24 puntos alcanzan la meta y ganan", () -> {
+            var puntos = Map.of("jugador1", 24, "jugador2", 21, "jugador3", 17);
+            iguales(24, Puntuacion.metaPara(3));
+            cierto(puntos.get("jugador1") >= Puntuacion.metaPara(3), "24 no alcanzó la meta");
+            cierto(puntos.get("jugador2") < Puntuacion.metaPara(3), "21 alcanzó la meta");
+            iguales(List.of("jugador1"),
+                    Puntuacion.ganadores(puntos, List.of("jugador1", "jugador2", "jugador3")));
+        });
+
+        caso("Ejemplo B: con 5 jugadores, 20 puntos alcanzan la meta y ganan", () -> {
+            var puntos = Map.of("jugador1", 19, "jugador2", 13, "jugador3", 20, "jugador4", 16, "jugador5", 10);
+            iguales(20, Puntuacion.metaPara(5));
+            cierto(puntos.get("jugador1") < Puntuacion.metaPara(5), "19 alcanzó la meta");
+            iguales(List.of("jugador3"), Puntuacion.ganadores(puntos,
+                    List.of("jugador1", "jugador2", "jugador3", "jugador4", "jugador5")));
+        });
+
         for (String texto : CASOS_COMPARTIDOS) {
             caso("Coincide con la app: " + texto, () -> {
                 // split con -1 conserva la parte vacía de "sin zonas".
