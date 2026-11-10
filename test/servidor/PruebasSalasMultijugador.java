@@ -73,6 +73,38 @@ final class PruebasSalasMultijugador {
         if (zonaB > 0) completar(b, codigo, zonaB); else jugar(b, codigo);
     }
 
+    /**
+     * La misma partida que test/partidas_por_jugadores_test.dart de brilliantdart, con [cantidad] jugadores en el
+     * Mapa 1: j1 gana el 1.º lugar de las zonas 1, 3, 9 y 4 (8 + 7 + 7 + 6), una por ronda, y el jugador i completa
+     * la zona 1 en la ronda i. Devuelve el código de la sala, ya terminada.
+     */
+    private static String partidaDe(int cantidad, String prefijo) {
+        List<String> nombres = new ArrayList<>();
+        for (int i = 1; i <= cantidad; i++) {
+            nombres.add(prefijo + "j" + i);
+        }
+        String codigo = SalasMultijugador.crear(nombres.get(0), 1, cantidad).sala().codigo();
+        nombres.stream().skip(1).forEach(nombre -> SalasMultijugador.unirse(nombre, codigo));
+        nombres.forEach(nombre -> SalasMultijugador.marcarListo(nombre, codigo, true));
+        nombres.forEach(nombre -> SalasMultijugador.finalizarTablero(nombre, codigo, ORDEN));
+
+        List<Integer> zonasDeJ1 = List.of(1, 3, 9, 4);
+        int fin = Puntuacion.metaPara(cantidad) > 22 ? 4 : 3;
+        for (int ronda = 1; ronda <= fin; ronda++) {
+            iguales(ronda, sala(nombres.get(0), codigo).ronda());
+            for (int i = 1; i <= cantidad; i++) {
+                String jugador = nombres.get(i - 1);
+                if (ronda == fin && i == cantidad) {
+                    // Falta solo el último: aunque j1 ya llegó, la ronda no ha terminado.
+                    cierto(!sala(jugador, codigo).terminada(), "terminó antes de acabar la ronda");
+                }
+                Integer zona = i == 1 ? zonasDeJ1.get(ronda - 1) : i == ronda ? Integer.valueOf(1) : null;
+                SalasMultijugador.terminarTurno(jugador, codigo, ronda, false, zona);
+            }
+        }
+        return codigo;
+    }
+
     private static void jugar(String usuario, String codigo) {
         SalasMultijugador.terminarTurno(usuario, codigo, sala(usuario, codigo).ronda(), false);
     }
@@ -800,6 +832,40 @@ final class PruebasSalasMultijugador {
             cierto(fin.terminada(), "no terminó");
             iguales(List.of("b92"), fin.ganadores());
         });
+
+        for (int cantidad = 2; cantidad <= 6; cantidad++) {
+            final int n = cantidad;
+            final String prefijo = "p" + n;
+            caso("Partida de " + n + " jugadores: meta, final, ganador y mismo resultado para todos", () -> {
+                String codigo = partidaDe(n, prefijo);
+                int meta = Map.of(2, 26, 3, 24, 4, 22, 5, 20, 6, 20).get(n);
+                int fin = meta > 22 ? 4 : 3;
+
+                var vista = sala(prefijo + "j1", codigo);
+                iguales(meta, vista.meta());
+                cierto(vista.terminada(), "no terminó al llegar j1 a la meta");
+                iguales(fin, vista.ronda());
+                iguales(List.of(prefijo + "j1"), vista.ganadores());
+
+                // Cada jugador recibe exactamente el mismo resultado final.
+                for (int i = 2; i <= n; i++) {
+                    var otra = sala(prefijo + "j" + i, codigo);
+                    iguales(vista.terminada(), otra.terminada());
+                    iguales(vista.ganadores(), otra.ganadores());
+                    iguales(vista.zonas(), otra.zonas());
+                    iguales(vista.meta(), otra.meta());
+                    iguales(vista.jugadores(), otra.jugadores());
+                }
+
+                // Los puntos que el servidor usó, de mayor a menor como en la app.
+                var puntos = Puntuacion.puntos(1, vista.zonas());
+                iguales(fin == 4 ? 28 : 22, puntos.get(prefijo + "j1"));
+                iguales(6, puntos.get(prefijo + "j2"));
+                if (n >= 3) {
+                    iguales(4, puntos.get(prefijo + "j3"));
+                }
+            });
+        }
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
         caso("Tras 5 minutos sin consultar el anfitrión pierde la sala", () -> {
