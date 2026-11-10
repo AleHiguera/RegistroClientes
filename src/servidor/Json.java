@@ -59,6 +59,9 @@ final class Json {
                 + ",\"dados\":" + numeros(sala.dados())
                 + ",\"jugaron\":" + lista(sala.jugaron())
                 + ",\"zonas\":" + zonas(sala.zonas())
+                + ",\"meta\":" + sala.meta()
+                + ",\"terminada\":" + sala.terminada()
+                + ",\"ganadores\":" + lista(sala.ganadores())
                 + "}";
     }
 

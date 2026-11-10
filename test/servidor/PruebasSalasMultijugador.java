@@ -67,6 +67,12 @@ final class PruebasSalasMultijugador {
         SalasMultijugador.terminarTurno(usuario, codigo, sala(usuario, codigo).ronda(), false, zona);
     }
 
+    /** Una ronda en la que cada jugador completa la zona indicada, o solo juega si es 0. */
+    private static void ronda(String codigo, String a, int zonaA, String b, int zonaB) {
+        if (zonaA > 0) completar(a, codigo, zonaA); else jugar(a, codigo);
+        if (zonaB > 0) completar(b, codigo, zonaB); else jugar(b, codigo);
+    }
+
     private static void jugar(String usuario, String codigo) {
         SalasMultijugador.terminarTurno(usuario, codigo, sala(usuario, codigo).ronda(), false);
     }
@@ -685,6 +691,114 @@ final class PruebasSalasMultijugador {
             completar("a80", codigo, 3);
             SalasMultijugador.salir("a80", codigo);
             iguales(Map.of(3, Map.of("a80", 1)), sala("b80", codigo).zonas());
+        });
+
+        // En el Mapa 1 la zona 1 es la amarilla (8), la 3 azul (7), la 4 morada (6), la 6 roja (6),
+        // la 8 roja (6) y la 9 azul (7). Ganar las cuatro primeras da 27 puntos.
+
+        caso("Antes de comenzar no hay meta", () -> iguales(0, sala("a81", crear("a81", 2)).meta()));
+
+        caso("La meta depende de cuántos empezaron", () -> {
+            iguales(26, sala("a82", enJuego("a82", 2)).meta());
+            iguales(24, sala("a83", enJuegoDeTres("a83", "b83", "c83")).meta());
+        });
+
+        caso("Si alguien sale, la meta sigue siendo la del comienzo", () -> {
+            String codigo = enJuegoDeTres("a84", "b84", "c84");
+            SalasMultijugador.salir("b84", codigo);
+            SalasMultijugador.salir("c84", codigo);
+            iguales(24, sala("a84", codigo).meta());
+        });
+
+        caso("Quien llega a la meta gana al terminar la ronda", () -> {
+            String codigo = enJuego("a85", 2);
+            ronda(codigo, "a85", 1, "b85", 0);
+            ronda(codigo, "a85", 3, "b85", 0);
+            ronda(codigo, "a85", 4, "b85", 0);
+            var antes = sala("a85", codigo);
+            completar("a85", codigo, 6);
+            var aMitad = sala("b85", codigo);
+            cierto(!aMitad.terminada(), "terminó a mitad de la ronda");
+            iguales(antes.dados(), aMitad.dados());
+            jugar("b85", codigo);
+            var fin = sala("b85", codigo);
+            cierto(fin.terminada(), "no terminó al llegar a la meta");
+            iguales(List.of("a85"), fin.ganadores());
+            iguales(4, fin.ronda());
+        });
+
+        caso("Sin llegar a la meta la partida sigue", () -> {
+            String codigo = enJuego("a86", 2);
+            ronda(codigo, "a86", 1, "b86", 0);
+            ronda(codigo, "a86", 3, "b86", 0);
+            var vista = sala("a86", codigo);
+            cierto(!vista.terminada(), "terminó con 15 puntos");
+            iguales(3, vista.ronda());
+        });
+
+        caso("Si dos llegan en la misma ronda gana quien hizo más", () -> {
+            String codigo = enJuego("a87", 2);
+            ronda(codigo, "a87", 1, "b87", 1);
+            ronda(codigo, "a87", 3, "b87", 3);
+            ronda(codigo, "a87", 4, "b87", 4);
+            ronda(codigo, "a87", 6, "b87", 9);
+            iguales(List.of("b87"), sala("a87", codigo).ganadores());
+        });
+
+        caso("Si llegan con los mismos puntos, los dos ganan", () -> {
+            String codigo = enJuego("a88", 2);
+            ronda(codigo, "a88", 1, "b88", 1);
+            ronda(codigo, "a88", 3, "b88", 3);
+            ronda(codigo, "a88", 4, "b88", 4);
+            ronda(codigo, "a88", 6, "b88", 8);
+            var fin = sala("a88", codigo);
+            cierto(fin.terminada(), "no terminó");
+            iguales(List.of("a88", "b88"), fin.ganadores());
+        });
+
+        caso("Terminada la partida ya no se lanzan dados ni se juegan turnos", () -> {
+            String codigo = enJuego("a89", 2);
+            ronda(codigo, "a89", 1, "b89", 0);
+            ronda(codigo, "a89", 3, "b89", 0);
+            ronda(codigo, "a89", 4, "b89", 0);
+            ronda(codigo, "a89", 6, "b89", 0);
+            var fin = sala("a89", codigo);
+            iguales("La partida terminó.", SalasMultijugador.terminarTurno("b89", codigo, 4, false, 9).mensaje());
+            var despues = sala("a89", codigo);
+            iguales(fin.ronda(), despues.ronda());
+            iguales(fin.dados(), despues.dados());
+            iguales(fin.zonas(), despues.zonas());
+        });
+
+        caso("Si todos llenan su tablero sin llegar, gana quien tenga más", () -> {
+            String codigo = enJuego("a90", 2);
+            SalasMultijugador.terminarTurno("a90", codigo, 1, true, 1);
+            SalasMultijugador.terminarTurno("b90", codigo, 1, true, 3);
+            var fin = sala("a90", codigo);
+            cierto(fin.terminada(), "no terminó con todos los tableros llenos");
+            iguales(List.of("a90"), fin.ganadores());
+        });
+
+        caso("Una zona que el mapa no tiene se rechaza", () -> {
+            String codigo = enJuego("a91", 2);
+            iguales("Esa zona no existe.", SalasMultijugador.terminarTurno("a91", codigo, 1, false, 10).mensaje());
+            cierto(SalasMultijugador.terminarTurno("a91", codigo, 1, false, 9).exito(), "rechazó la zona 9");
+        });
+
+        caso("Si quien llegó a la meta sale, igual cuenta al terminar la ronda", () -> {
+            String codigo = enJuegoDeTres("a92", "b92", "c92");
+            for (int zona : List.of(1, 3, 4)) {
+                completar("b92", codigo, zona);
+                jugar("a92", codigo);
+                jugar("c92", codigo);
+            }
+            completar("b92", codigo, 6);
+            SalasMultijugador.salir("b92", codigo);
+            jugar("a92", codigo);
+            jugar("c92", codigo);
+            var fin = sala("a92", codigo);
+            cierto(fin.terminada(), "no terminó");
+            iguales(List.of("b92"), fin.ganadores());
         });
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.

@@ -22,6 +22,8 @@ import java.util.TreeMap;
  * ronda se lanza cuando todos jugaron la actual; quien llenó su tablero ya no hace esperar a nadie.
  * También se registra en qué ronda completa cada jugador cada zona; los puntos los calcula la app, que
  * conoce los mapas. El registro no se borra cuando alguien sale: su lugar queda ocupado y nadie sube.
+ * Al terminar cada ronda se revisa si alguien llegó a la meta (según cuántos empezaron) o si ya nadie puede
+ * jugar; entonces la partida termina y gana quien tenga más puntos, o todos los empatados.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -36,8 +38,6 @@ public final class SalasMultijugador {
 
     private static final List<Integer> NUMEROS_INICIALES = List.of(1, 2, 3, 4, 5, 6);
     private static final SecureRandom DADO = new SecureRandom();
-    // Un tablero tiene 49 celdas: no puede haber más zonas que esas.
-    private static final int MAX_ZONA = 49;
 
     /**
      * Lo que ve un jugador de la sala. [listos] y [finalizados] van en el mismo orden que [jugadores].
@@ -49,7 +49,8 @@ public final class SalasMultijugador {
     public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
                         List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
                         List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron,
-                        Map<Integer, Map<String, Integer>> zonas) {}
+                        Map<Integer, Map<String, Integer>> zonas, int meta, boolean terminada,
+                        List<String> ganadores) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -78,6 +79,10 @@ public final class SalasMultijugador {
         private final Set<String> tablerosLlenos = new HashSet<>();
         // número de zona → usuario → ronda en que la completó
         private final Map<Integer, Map<String, Integer>> zonas = new TreeMap<>();
+        // La meta se fija con los que empezaron y no cambia aunque alguien salga.
+        private int jugadoresAlComenzar;
+        private boolean terminada;
+        private List<String> ganadores = List.of();
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -95,7 +100,8 @@ public final class SalasMultijugador {
                     // Se calcula: quien falta y se va deja de frenar a los demás.
                     tablerosConfigurados(),
                     tableros.getOrDefault(usuario, List.of()), ronda, dados,
-                    enOrden.stream().filter(this::yaNoDebeNada).toList(), copiaDeZonas());
+                    enOrden.stream().filter(this::yaNoDebeNada).toList(), copiaDeZonas(),
+                    comenzada ? meta() : 0, terminada, ganadores);
         }
 
         private Map<Integer, Map<String, Integer>> copiaDeZonas() {
@@ -112,21 +118,40 @@ public final class SalasMultijugador {
             return jugaron.contains(jugador) || tablerosLlenos.contains(jugador);
         }
 
-        /** Lanza los dados en cuanto no se espera a nadie, salvo que ya todos hayan llenado su tablero. */
-        void lanzarSiToca() {
+        int meta() {
+            return Puntuacion.metaPara(jugadoresAlComenzar);
+        }
+
+        /**
+         * Cuando no se espera a nadie: si alguien llegó a la meta o ya nadie puede jugar, la partida termina; si no,
+         * se lanza la siguiente ronda. Se revisa al final de la ronda, nunca a mitad: como todos juegan con los
+         * mismos dados, terminarla antes premiaría a quien confirma más rápido.
+         */
+        void avanzarRonda() {
             boolean rondaTerminada = ronda == 0 || jugadores.keySet().stream().allMatch(this::yaNoDebeNada);
-            boolean quedaQuienJuegue = !tablerosLlenos.containsAll(jugadores.keySet());
-            if (tablerosConfigurados() && rondaTerminada && quedaQuienJuegue) {
-                ronda++;
-                dados = List.of(DADO.nextInt(6) + 1, DADO.nextInt(6) + 1);
-                jugaron.clear();
+            if (terminada || !tablerosConfigurados() || !rondaTerminada) {
+                return;
             }
+            if (ronda > 0) {
+                Map<String, Integer> puntos = Puntuacion.puntos(mapa, zonas);
+                boolean alguienLlego = puntos.values().stream().anyMatch(total -> total >= meta());
+                boolean nadiePuedeJugar = tablerosLlenos.containsAll(jugadores.keySet());
+                if (alguienLlego || nadiePuedeJugar) {
+                    terminada = true;
+                    ganadores = Puntuacion.ganadores(puntos, jugadores.keySet());
+                    return;
+                }
+            }
+            ronda++;
+            dados = List.of(DADO.nextInt(6) + 1, DADO.nextInt(6) + 1);
+            jugaron.clear();
         }
 
         /** La partida empieza en cuanto no falta nadie por confirmar. */
         void comenzarSiTodosListos() {
             if (!comenzada && jugadores.size() >= MIN_JUGADORES && listos.containsAll(jugadores.keySet())) {
                 comenzada = true;
+                jugadoresAlComenzar = jugadores.size();
             }
         }
     }
@@ -210,7 +235,7 @@ public final class SalasMultijugador {
             return Resultado.error("Los números iniciales deben ser del 1 al 6, sin repetir.");
         }
         sala.tableros.put(usuario, leidos);
-        sala.lanzarSiToca();
+        sala.avanzarRonda();
         return Resultado.ok("Tablero finalizado.", sala.vista(usuario));
     }
 
@@ -237,7 +262,10 @@ public final class SalasMultijugador {
         if (ronda == 0 || ronda != sala.ronda) {
             return Resultado.ok("Esa ronda no está en juego.", sala.vista(usuario));
         }
-        if (zona != null && (zona < 1 || zona > MAX_ZONA)) {
+        if (sala.terminada) {
+            return Resultado.ok("La partida terminó.", sala.vista(usuario));
+        }
+        if (zona != null && (zona < 1 || zona > PuntosPorMapa.cantidadDeZonas(sala.mapa))) {
             return Resultado.error("Esa zona no existe.");
         }
         if (sala.jugaron.contains(usuario)) {
@@ -250,7 +278,7 @@ public final class SalasMultijugador {
         if (tableroLleno) {
             sala.tablerosLlenos.add(usuario);
         }
-        sala.lanzarSiToca();
+        sala.avanzarRonda();
         return Resultado.ok("Turno terminado.", sala.vista(usuario));
     }
 
@@ -314,7 +342,7 @@ public final class SalasMultijugador {
             }
             // Si el que se fue era el único al que se esperaba, ya no hay por qué seguir esperando.
             sala.comenzarSiTodosListos();
-            sala.lanzarSiToca();
+            sala.avanzarRonda();
         }
     }
 }

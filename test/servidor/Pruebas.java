@@ -18,6 +18,7 @@ public final class Pruebas {
         PruebasCodigoSala.ejecutar();
         PruebasSalasMultijugador.ejecutar();
         PruebasJson.ejecutar();
+        PruebasPuntuacion.ejecutar();
 
         System.out.println("\n" + correctas + " correctas, " + fallidas + " fallidas");
         if (fallidas > 0) {
