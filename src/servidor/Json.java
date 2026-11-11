@@ -62,6 +62,7 @@ final class Json {
                 + ",\"meta\":" + sala.meta()
                 + ",\"terminada\":" + sala.terminada()
                 + ",\"ganadores\":" + lista(sala.ganadores())
+                + ",\"porAbandono\":" + sala.porAbandono()
                 + "}";
     }
 

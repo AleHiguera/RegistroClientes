@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -120,6 +121,35 @@ final class PruebasSalasMultijugador {
                 SalasMultijugador.reloj = System::currentTimeMillis;
             }
         });
+    }
+
+    /** Corre una prueba que cambia quién tiene sesión, y devuelve a todos la suya al terminar. */
+    private static void conSesiones(String nombre, Runnable prueba) {
+        caso(nombre, () -> {
+            try {
+                prueba.run();
+            } finally {
+                SalasMultijugador.conectado = usuario -> true;
+            }
+        });
+    }
+
+    /** Desde ahora, [sinSesion] ya no envían latidos. */
+    private static void pierdenSesion(Set<String> sinSesion) {
+        SalasMultijugador.conectado = usuario -> !sinSesion.contains(usuario);
+    }
+
+    private static String mensajeAl(String usuario, String codigo) {
+        return SalasMultijugador.consultar(usuario, codigo).mensaje();
+    }
+
+    /** [ausente] deja de consultar y los otros dos siguen: a los 25 s ya lo sacaron. */
+    private static void dejaDeConsultar(String codigo, String a, String b) {
+        aLos(15);
+        sala(a, codigo);
+        sala(b, codigo);
+        aLos(25);
+        sala(a, codigo);
     }
 
     private static void jugar(String usuario, String codigo) {
@@ -559,8 +589,15 @@ final class PruebasSalasMultijugador {
         });
 
         caso("Si el anfitrión sale mientras colocan los números, no se les espera", () -> {
-            String codigo = comenzada("a59", 2);
+            // Con tres: con dos, quien queda ya ganaría por abandono.
+            String codigo = crear("a59", 3);
+            SalasMultijugador.unirse("b59", codigo);
+            SalasMultijugador.unirse("c59", codigo);
+            for (String jugador : List.of("a59", "b59", "c59")) {
+                SalasMultijugador.marcarListo(jugador, codigo, true);
+            }
             SalasMultijugador.finalizarTablero("b59", codigo, ORDEN);
+            SalasMultijugador.finalizarTablero("c59", codigo, ORDEN);
             SalasMultijugador.salir("a59", codigo);
             var vista = sala("b59", codigo);
             cierto(vista.configurada(), "siguió esperando al anfitrión");
@@ -954,6 +991,132 @@ final class PruebasSalasMultijugador {
         });
 
         caso("Cerrar sesión sin estar en ninguna sala no falla", () -> SalasMultijugador.abandonar("nadie9"));
+
+        caso("Si en la partida solo queda uno, gana por abandono", () -> {
+            String codigo = enJuegoDeTres("h1", "i1", "k1");
+            SalasMultijugador.salir("i1", codigo);
+            cierto(!sala("h1", codigo).terminada(), "terminó quedando dos");
+            SalasMultijugador.salir("k1", codigo);
+            var vista = sala("h1", codigo);
+            cierto(vista.terminada(), "no terminó al quedar uno");
+            cierto(vista.porAbandono(), "no dice que fue por abandono");
+            iguales(List.of("h1"), vista.ganadores());
+        });
+
+        caso("Quien se queda gana aunque el que se fue tuviera más puntos", () -> {
+            String codigo = enJuegoDeTres("h2", "i2", "k2");
+            completar("i2", codigo, 1);
+            SalasMultijugador.salir("i2", codigo);
+            SalasMultijugador.salir("k2", codigo);
+            var vista = sala("h2", codigo);
+            iguales(List.of("h2"), vista.ganadores());
+            iguales(Map.of("i2", 1), vista.zonas().get(1));
+        });
+
+        caso("También gana si los demás se van antes de los dados", () -> {
+            String codigo = comenzada("h3", 2);
+            SalasMultijugador.salir("b3", codigo);
+            var vista = sala("h3", codigo);
+            iguales(0, vista.ronda());
+            cierto(vista.terminada() && vista.porAbandono(), "no ganó por abandono");
+            iguales(List.of("h3"), vista.ganadores());
+        });
+
+        caso("En la sala de espera quedarse solo no gana nada", () -> {
+            String codigo = crear("h4", 3);
+            SalasMultijugador.unirse("i4", codigo);
+            SalasMultijugador.salir("i4", codigo);
+            var vista = sala("h4", codigo);
+            cierto(!vista.terminada() && !vista.porAbandono(), "terminó sin comenzar");
+        });
+
+        caso("Una partida que termina por la meta no es por abandono", () -> {
+            var vista = sala("pa2j1", partidaDe(2, "pa2"));
+            cierto(vista.terminada() && !vista.porAbandono(), "dice que fue por abandono");
+        });
+
+        caso("Ganar por abandono no deja jugar más rondas", () -> {
+            String codigo = enJuego("h5", 2);
+            SalasMultijugador.salir("b5", codigo);
+            var resultado = SalasMultijugador.terminarTurno("h5", codigo, 1, false);
+            iguales("La partida terminó.", resultado.mensaje());
+            iguales(1, resultado.sala().ronda());
+        });
+
+        conReloj("Quien queda cuando los demás pierden la conexión gana por abandono", () -> {
+            String codigo = enJuegoDeTres("h6", "i6", "k6");
+            aLos(15);
+            sala("h6", codigo);
+            aLos(25);
+            var vista = sala("h6", codigo);
+            iguales(List.of("h6"), vista.jugadores());
+            cierto(vista.terminada() && vista.porAbandono(), "no ganó por abandono");
+        });
+
+        conReloj("A quien sacan por no consultar se le dice que fue por inactividad", () -> {
+            String codigo = enJuegoDeTres("m1", "n1", "o1");
+            dejaDeConsultar(codigo, "m1", "n1");
+            iguales("Te sacaron por inactividad.", mensajeAl("o1", codigo));
+        });
+
+        conReloj("El aviso de inactividad se da una sola vez", () -> {
+            String codigo = enJuegoDeTres("m2", "n2", "o2");
+            dejaDeConsultar(codigo, "m2", "n2");
+            mensajeAl("o2", codigo);
+            iguales("Esta partida ya no está disponible.", mensajeAl("o2", codigo));
+        });
+
+        conReloj("Volver a unirse tras la inactividad también lo explica", () -> {
+            String codigo = enJuegoDeTres("m3", "n3", "o3");
+            dejaDeConsultar(codigo, "m3", "n3");
+            iguales(SalasMultijugador.MENSAJE_INACTIVIDAD, SalasMultijugador.unirse("o3", codigo).mensaje());
+        });
+
+        conReloj("Si la sala ya no existe, igual se dice que fue por inactividad", () -> {
+            String codigo = enJuego("m4", 2);
+            aLos(25);
+            SalasMultijugador.quitarAusentes(SalasMultijugador.reloj.getAsLong());
+            iguales(SalasMultijugador.MENSAJE_INACTIVIDAD, mensajeAl("m4", codigo));
+        });
+
+        caso("Quien sale por su cuenta no recibe el aviso de inactividad", () -> {
+            String codigo = enJuegoDeTres("m5", "n5", "o5");
+            SalasMultijugador.salir("o5", codigo);
+            iguales("Esta partida ya no está disponible.", mensajeAl("o5", codigo));
+        });
+
+        conSesiones("En la sala de espera sale quien perdió su sesión", () -> {
+            String codigo = crear("q1", 3);
+            SalasMultijugador.unirse("q2", codigo);
+            SalasMultijugador.unirse("q3", codigo);
+            pierdenSesion(Set.of("q2"));
+            iguales(List.of("q1", "q3"), sala("q1", codigo).jugadores());
+            iguales(SalasMultijugador.MENSAJE_INACTIVIDAD, mensajeAl("q2", codigo));
+        });
+
+        conSesiones("Ya sin quien perdió su sesión, los demás pueden comenzar", () -> {
+            String codigo = crear("q4", 3);
+            SalasMultijugador.unirse("q5", codigo);
+            SalasMultijugador.unirse("q6", codigo);
+            SalasMultijugador.marcarListo("q4", codigo, true);
+            SalasMultijugador.marcarListo("q5", codigo, true);
+            cierto(!sala("q4", codigo).comenzada(), "comenzó sin q6");
+            pierdenSesion(Set.of("q6"));
+            cierto(sala("q4", codigo).comenzada(), "siguió esperando a q6");
+        });
+
+        conSesiones("Si el anfitrión pierde su sesión en la sala de espera, se cierra", () -> {
+            String codigo = crear("q7", 2);
+            SalasMultijugador.unirse("q8", codigo);
+            pierdenSesion(Set.of("q7"));
+            cierto(!SalasMultijugador.consultar("q8", codigo).exito(), "la sala siguió abierta");
+        });
+
+        conSesiones("En una partida en juego perder la sesión no saca a quien sigue consultando", () -> {
+            String codigo = enJuego("q9", 2);
+            pierdenSesion(Set.of("q9", "b9"));
+            iguales(List.of("q9", "b9"), sala("q9", codigo).jugadores());
+        });
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
         caso("Tras 5 minutos sin consultar el anfitrión pierde la sala", () -> {

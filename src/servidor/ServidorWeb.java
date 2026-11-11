@@ -80,6 +80,7 @@ public final class ServidorWeb {
     private ServidorWeb() {}
 
     public static void iniciar(int puerto, SSLContext tls) throws IOException {
+        SalasMultijugador.conectado = ServidorWeb::tieneSesionViva;
         HttpsServer servidor = HttpsServer.create(new InetSocketAddress(puerto), 0);
         servidor.setHttpsConfigurator(new HttpsConfigurator(tls) {
             @Override
@@ -218,6 +219,11 @@ public final class ServidorWeb {
         }
         sesion.renovar();
         responder(intercambio, 200, true, "Sesión activa.");
+    }
+
+    /** Si el usuario sigue enviando latidos desde alguna sesión web. */
+    static boolean tieneSesionViva(String usuario) {
+        return SESIONES.values().stream().anyMatch(sesion -> sesion.usuario.equals(usuario) && !sesion.caducada());
     }
 
     /** La sesión del token recibido. Si ya no está activa responde el error y devuelve null. */

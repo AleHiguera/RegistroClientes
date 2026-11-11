@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
@@ -25,6 +26,8 @@ import java.util.function.LongSupplier;
  * conoce los mapas. El registro no se borra cuando alguien sale: su lugar queda ocupado y nadie sube.
  * Al terminar cada ronda se revisa si alguien llegó a la meta (según cuántos empezaron) o si ya nadie puede
  * jugar; entonces la partida termina y gana quien tenga más puntos, o todos los empatados.
+ * Quien deja de consultar sale: en la partida en juego a los 20 s, cuenta como abandono; en la sala de espera, al
+ * perder su sesión. Si en la partida solo queda uno, gana por abandono de los demás.
  */
 public final class SalasMultijugador {
     public static final int MIN_JUGADORES = 2;
@@ -39,6 +42,18 @@ public final class SalasMultijugador {
 
     // Las pruebas lo adelantan para simular que pasó el tiempo.
     static LongSupplier reloj = System::currentTimeMillis;
+
+    /**
+     * Si el usuario todavía tiene una sesión viva. Quien perdió la conexión deja de enviar latidos, y entonces ya
+     * no ocupa su lugar en la sala de espera. El servidor web lo conecta con sus sesiones.
+     */
+    static Predicate<String> conectado = usuario -> true;
+
+    public static final String MENSAJE_INACTIVIDAD = "Te sacaron por inactividad.";
+    private static final String MENSAJE_NO_DISPONIBLE = "Esta partida ya no está disponible.";
+
+    // usuario → código de la sala de la que lo sacaron por no consultar, para decírselo cuando vuelva.
+    private static final Map<String, String> SACADOS_POR_INACTIVIDAD = new HashMap<>();
 
     // Todos los métodos son synchronized: una sala llena no debe aceptar a dos jugadores a la vez.
     private static final Map<String, Sala> SALAS = new HashMap<>();
@@ -57,7 +72,7 @@ public final class SalasMultijugador {
                         List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
                         List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron,
                         Map<Integer, Map<String, Integer>> zonas, int meta, boolean terminada,
-                        List<String> ganadores) {}
+                        List<String> ganadores, boolean porAbandono) {}
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -90,6 +105,8 @@ public final class SalasMultijugador {
         private int jugadoresAlComenzar;
         private boolean terminada;
         private List<String> ganadores = List.of();
+        // Terminó porque todos los demás salieron: gana quien se quedó, tenga los puntos que tenga.
+        private boolean porAbandono;
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -108,7 +125,7 @@ public final class SalasMultijugador {
                     tablerosConfigurados(),
                     tableros.getOrDefault(usuario, List.of()), ronda, dados,
                     enOrden.stream().filter(this::yaNoDebeNada).toList(), copiaDeZonas(),
-                    comenzada ? meta() : 0, terminada, ganadores);
+                    comenzada ? meta() : 0, terminada, ganadores, porAbandono);
         }
 
         private Map<Integer, Map<String, Integer>> copiaDeZonas() {
@@ -154,6 +171,15 @@ public final class SalasMultijugador {
             jugaron.clear();
         }
 
+        /** Si de los que empezaron solo queda uno, gana por abandono de los demás. */
+        void terminarSiQuedaUno() {
+            if (comenzada && !terminada && jugadores.size() == 1) {
+                terminada = true;
+                porAbandono = true;
+                ganadores = List.copyOf(jugadores.keySet());
+            }
+        }
+
         /** La partida empieza en cuanto no falta nadie por confirmar. */
         void comenzarSiTodosListos() {
             if (!comenzada && jugadores.size() >= MIN_JUGADORES && listos.containsAll(jugadores.keySet())) {
@@ -174,6 +200,7 @@ public final class SalasMultijugador {
         }
         quitarAusentes(reloj.getAsLong());
         sacarDeSalas(usuario);
+        SACADOS_POR_INACTIVIDAD.remove(usuario);
 
         Sala sala = new Sala(CodigoSala.nuevo(SALAS::containsKey), mapa, capacidad, usuario);
         SALAS.put(sala.codigo, sala);
@@ -184,17 +211,20 @@ public final class SalasMultijugador {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null) {
-            return Resultado.error("No existe ninguna partida con ese código.");
+            return SACADOS_POR_INACTIVIDAD.containsKey(usuario)
+                    ? noDisponible(usuario, codigo)
+                    : Resultado.error("No existe ninguna partida con ese código.");
         }
         if (!sala.jugadores.containsKey(usuario)) {
             if (sala.comenzada) {
-                return Resultado.error("La partida ya comenzó.");
+                return Resultado.error(sacadoDe(usuario, codigo) ? MENSAJE_INACTIVIDAD : "La partida ya comenzó.");
             }
             if (sala.jugadores.size() >= sala.capacidad) {
                 return Resultado.error("La partida ya está llena.");
             }
             sacarDeSalas(usuario);
         }
+        SACADOS_POR_INACTIVIDAD.remove(usuario);
         sala.jugadores.put(usuario, reloj.getAsLong());
         return Resultado.ok("Te uniste a la partida.", sala.vista(usuario));
     }
@@ -204,7 +234,7 @@ public final class SalasMultijugador {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
-            return Resultado.error("Esta partida ya no está disponible.");
+            return noDisponible(usuario, codigo);
         }
         sala.jugadores.put(usuario, reloj.getAsLong());
         if (sala.comenzada) {
@@ -228,7 +258,7 @@ public final class SalasMultijugador {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
-            return Resultado.error("Esta partida ya no está disponible.");
+            return noDisponible(usuario, codigo);
         }
         sala.jugadores.put(usuario, reloj.getAsLong());
         if (!sala.comenzada) {
@@ -263,7 +293,7 @@ public final class SalasMultijugador {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
-            return Resultado.error("Esta partida ya no está disponible.");
+            return noDisponible(usuario, codigo);
         }
         sala.jugadores.put(usuario, reloj.getAsLong());
         if (ronda == 0 || ronda != sala.ronda) {
@@ -289,6 +319,18 @@ public final class SalasMultijugador {
         return Resultado.ok("Turno terminado.", sala.vista(usuario));
     }
 
+    /**
+     * Por qué [usuario] ya no está en la sala [codigo]: si lo sacaron por no consultar se le dice, una sola vez,
+     * para que no lo confunda con que la partida se cerró.
+     */
+    private static Resultado noDisponible(String usuario, String codigo) {
+        return Resultado.error(sacadoDe(usuario, codigo) ? MENSAJE_INACTIVIDAD : MENSAJE_NO_DISPONIBLE);
+    }
+
+    private static boolean sacadoDe(String usuario, String codigo) {
+        return SACADOS_POR_INACTIVIDAD.remove(usuario, CodigoSala.normalizar(codigo));
+    }
+
     /** Los números separados por comas, o null si no son exactamente del 1 al 6 sin repetir. */
     private static List<Integer> leerNumeros(String numeros) {
         try {
@@ -304,7 +346,7 @@ public final class SalasMultijugador {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
-            return Resultado.error("Esta partida ya no está disponible.");
+            return noDisponible(usuario, codigo);
         }
         sala.jugadores.put(usuario, reloj.getAsLong());
         return Resultado.ok("Sala actualizada.", sala.vista(usuario));
@@ -326,8 +368,12 @@ public final class SalasMultijugador {
         for (Sala sala : List.copyOf(SALAS.values())) {
             long limite = ahora - (sala.comenzada && !sala.terminada ? SIN_CONTACTO_EN_PARTIDA_MS : SIN_CONTACTO_MAX_MS);
             for (Map.Entry<String, Long> jugador : Map.copyOf(sala.jugadores).entrySet()) {
-                if (jugador.getValue() < limite) {
-                    sacar(jugador.getKey(), sala);
+                String usuario = jugador.getKey();
+                // En la sala de espera, perder la sesión basta: quien se desconectó no frena el comienzo.
+                boolean sinSesion = !sala.comenzada && !conectado.test(usuario);
+                if ((jugador.getValue() < limite || sinSesion) && SALAS.containsKey(sala.codigo)) {
+                    sacar(usuario, sala);
+                    SACADOS_POR_INACTIVIDAD.put(usuario, sala.codigo);
                 }
             }
         }
@@ -357,6 +403,7 @@ public final class SalasMultijugador {
             }
             // Si el que se fue era el único al que se esperaba, ya no hay por qué seguir esperando.
             sala.comenzarSiTodosListos();
+            sala.terminarSiQuedaUno();
             sala.avanzarRonda();
         }
     }
