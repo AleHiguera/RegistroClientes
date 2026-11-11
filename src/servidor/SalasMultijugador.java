@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.LongSupplier;
 
 /**
  * Salas de espera del modo multijugador. Viven en memoria: se pierden si el servidor se reinicia.
@@ -32,6 +33,12 @@ public final class SalasMultijugador {
 
     // Holgado a propósito: en el celular la app se detiene mientras el anfitrión comparte el código en otra app.
     static final long SIN_CONTACTO_MAX_MS = 5 * 60 * 1000L;
+    // Con la partida en juego la app consulta cada 2 s: quien deja de hacerlo tanto tiempo perdió la conexión,
+    // y eso cuenta como abandono para no dejar a los demás esperando su turno.
+    static final long SIN_CONTACTO_EN_PARTIDA_MS = 20 * 1000L;
+
+    // Las pruebas lo adelantan para simular que pasó el tiempo.
+    static LongSupplier reloj = System::currentTimeMillis;
 
     // Todos los métodos son synchronized: una sala llena no debe aceptar a dos jugadores a la vez.
     private static final Map<String, Sala> SALAS = new HashMap<>();
@@ -89,7 +96,7 @@ public final class SalasMultijugador {
             this.mapa = mapa;
             this.capacidad = capacidad;
             this.anfitrion = anfitrion;
-            jugadores.put(anfitrion, System.currentTimeMillis());
+            jugadores.put(anfitrion, reloj.getAsLong());
         }
 
         Vista vista(String usuario) {
@@ -165,7 +172,7 @@ public final class SalasMultijugador {
         if (capacidad < MIN_JUGADORES || capacidad > MAX_JUGADORES) {
             return Resultado.error("La partida debe ser de " + MIN_JUGADORES + " a " + MAX_JUGADORES + " jugadores.");
         }
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         sacarDeSalas(usuario);
 
         Sala sala = new Sala(CodigoSala.nuevo(SALAS::containsKey), mapa, capacidad, usuario);
@@ -174,7 +181,7 @@ public final class SalasMultijugador {
     }
 
     public static synchronized Resultado unirse(String usuario, String codigo) {
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null) {
             return Resultado.error("No existe ninguna partida con ese código.");
@@ -188,18 +195,18 @@ public final class SalasMultijugador {
             }
             sacarDeSalas(usuario);
         }
-        sala.jugadores.put(usuario, System.currentTimeMillis());
+        sala.jugadores.put(usuario, reloj.getAsLong());
         return Resultado.ok("Te uniste a la partida.", sala.vista(usuario));
     }
 
     /** Marca o desmarca al jugador como listo; si con eso ya están todos, la partida comienza. */
     public static synchronized Resultado marcarListo(String usuario, String codigo, boolean listo) {
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
             return Resultado.error("Esta partida ya no está disponible.");
         }
-        sala.jugadores.put(usuario, System.currentTimeMillis());
+        sala.jugadores.put(usuario, reloj.getAsLong());
         if (sala.comenzada) {
             return Resultado.ok("La partida ya comenzó.", sala.vista(usuario));
         }
@@ -218,12 +225,12 @@ public final class SalasMultijugador {
      * Aquí solo se revisa que sean del 1 al 6 sin repetir; las reglas de cada zona del mapa las aplica la app.
      */
     public static synchronized Resultado finalizarTablero(String usuario, String codigo, String numeros) {
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
             return Resultado.error("Esta partida ya no está disponible.");
         }
-        sala.jugadores.put(usuario, System.currentTimeMillis());
+        sala.jugadores.put(usuario, reloj.getAsLong());
         if (!sala.comenzada) {
             return Resultado.error("La partida todavía no comienza.");
         }
@@ -253,12 +260,12 @@ public final class SalasMultijugador {
      */
     public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno,
                                                        Integer zona) {
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
             return Resultado.error("Esta partida ya no está disponible.");
         }
-        sala.jugadores.put(usuario, System.currentTimeMillis());
+        sala.jugadores.put(usuario, reloj.getAsLong());
         if (ronda == 0 || ronda != sala.ronda) {
             return Resultado.ok("Esa ronda no está en juego.", sala.vista(usuario));
         }
@@ -294,12 +301,12 @@ public final class SalasMultijugador {
 
     /** Devuelve la sala tal como está ahora; cada consulta cuenta como señal de que el jugador sigue ahí. */
     public static synchronized Resultado consultar(String usuario, String codigo) {
-        quitarAusentes(System.currentTimeMillis());
+        quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
             return Resultado.error("Esta partida ya no está disponible.");
         }
-        sala.jugadores.put(usuario, System.currentTimeMillis());
+        sala.jugadores.put(usuario, reloj.getAsLong());
         return Resultado.ok("Sala actualizada.", sala.vista(usuario));
     }
 
@@ -311,16 +318,24 @@ public final class SalasMultijugador {
         return Resultado.ok("Saliste de la partida.", null);
     }
 
-    /** Quien cerró la app sin salir deja de consultar: su lugar se libera para que no quede ocupado para siempre. */
+    /**
+     * Quien cerró la app o perdió la conexión deja de consultar: su lugar se libera para que no quede ocupado para
+     * siempre. En la sala de espera se le espera más; en una partida en juego cuenta pronto como abandono.
+     */
     static synchronized void quitarAusentes(long ahora) {
-        long limite = ahora - SIN_CONTACTO_MAX_MS;
         for (Sala sala : List.copyOf(SALAS.values())) {
+            long limite = ahora - (sala.comenzada && !sala.terminada ? SIN_CONTACTO_EN_PARTIDA_MS : SIN_CONTACTO_MAX_MS);
             for (Map.Entry<String, Long> jugador : Map.copyOf(sala.jugadores).entrySet()) {
                 if (jugador.getValue() < limite) {
                     sacar(jugador.getKey(), sala);
                 }
             }
         }
+    }
+
+    /** Quien cierra sesión deja la sala en la que esté, como si hubiera pulsado salir. */
+    public static synchronized void abandonar(String usuario) {
+        sacarDeSalas(usuario);
     }
 
     /** Un jugador está en una sola sala a la vez. */

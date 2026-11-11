@@ -236,6 +236,8 @@ public final class ServidorWeb {
         SesionWeb sesion = token != null ? SESIONES.remove(token) : null;
         if (sesion != null) {
             SesionesActivas.liberar(sesion.usuario, sesion);
+            // También llega aquí la sesión vieja de quien se desconectó y vuelve a entrar: deja su partida.
+            SalasMultijugador.abandonar(sesion.usuario);
             System.out.println("[*] " + sesion.usuario + " cerró sesión (web)");
         }
         responder(intercambio, 200, true, "Sesión cerrada.");

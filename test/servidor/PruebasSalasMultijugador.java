@@ -105,6 +105,23 @@ final class PruebasSalasMultijugador {
         return codigo;
     }
 
+    /** Hace que el servidor crea que ya pasaron [segundos] desde el comienzo de la prueba. */
+    private static void aLos(long segundos) {
+        long desfase = segundos * 1000L;
+        SalasMultijugador.reloj = () -> System.currentTimeMillis() + desfase;
+    }
+
+    /** Corre una prueba que mueve el reloj y lo deja como estaba al terminar. */
+    private static void conReloj(String nombre, Runnable prueba) {
+        caso(nombre, () -> {
+            try {
+                prueba.run();
+            } finally {
+                SalasMultijugador.reloj = System::currentTimeMillis;
+            }
+        });
+    }
+
     private static void jugar(String usuario, String codigo) {
         SalasMultijugador.terminarTurno(usuario, codigo, sala(usuario, codigo).ronda(), false);
     }
@@ -866,6 +883,77 @@ final class PruebasSalasMultijugador {
                 }
             });
         }
+
+        conReloj("En una partida en juego, quien deja de consultar 20 s la abandona", () -> {
+            String codigo = enJuegoDeTres("d1", "e1", "f1");
+            aLos(15);
+            sala("d1", codigo);
+            sala("e1", codigo);
+            aLos(25);
+            iguales(List.of("d1", "e1"), sala("d1", codigo).jugadores());
+            cierto(!SalasMultijugador.consultar("f1", codigo).exito(), "f1 siguió en la partida");
+        });
+
+        conReloj("Con menos de 20 s sin consultar todavía no es abandono", () -> {
+            String codigo = enJuego("d4", 2);
+            aLos(19);
+            iguales(List.of("d4", "b4"), sala("d4", codigo).jugadores());
+        });
+
+        conReloj("La ronda ya no espera a quien perdió la conexión", () -> {
+            String codigo = enJuegoDeTres("d2", "e2", "f2");
+            jugar("d2", codigo);
+            jugar("e2", codigo);
+            iguales(1, sala("d2", codigo).ronda());
+            aLos(15);
+            sala("d2", codigo);
+            sala("e2", codigo);
+            aLos(25);
+            iguales(2, sala("d2", codigo).ronda());
+        });
+
+        conReloj("Quien abandona por desconexión conserva su lugar en la zona", () -> {
+            String codigo = enJuegoDeTres("d3", "e3", "f3");
+            completar("f3", codigo, 1);
+            aLos(15);
+            sala("d3", codigo);
+            sala("e3", codigo);
+            aLos(25);
+            var vista = sala("d3", codigo);
+            cierto(!vista.jugadores().contains("f3"), "f3 siguió en la partida");
+            iguales(Map.of("f3", 1), vista.zonas().get(1));
+        });
+
+        conReloj("En la sala de espera 20 s sin consultar no sacan a nadie", () -> {
+            String codigo = crear("d5", 2);
+            SalasMultijugador.unirse("e5", codigo);
+            aLos(60);
+            iguales(List.of("d5", "e5"), sala("d5", codigo).jugadores());
+        });
+
+        conReloj("Una partida terminada no saca a nadie por no consultar", () -> {
+            String codigo = partidaDe(2, "q");
+            aLos(60);
+            var vista = sala("qj2", codigo);
+            iguales(List.of("qj1", "qj2"), vista.jugadores());
+            iguales(List.of("qj1"), vista.ganadores());
+        });
+
+        caso("Cerrar sesión en plena partida cuenta como abandono", () -> {
+            String codigo = enJuegoDeTres("d7", "e7", "f7");
+            SalasMultijugador.abandonar("f7");
+            iguales(List.of("d7", "e7"), sala("d7", codigo).jugadores());
+            cierto(!SalasMultijugador.consultar("f7", codigo).exito(), "f7 siguió en la partida");
+        });
+
+        caso("Si el anfitrión cierra sesión antes de comenzar, la sala se cierra", () -> {
+            String codigo = crear("d8", 2);
+            SalasMultijugador.unirse("e8", codigo);
+            SalasMultijugador.abandonar("d8");
+            cierto(!SalasMultijugador.consultar("e8", codigo).exito(), "la sala siguió abierta");
+        });
+
+        caso("Cerrar sesión sin estar en ninguna sala no falla", () -> SalasMultijugador.abandonar("nadie9"));
 
         // Esta va al final: deja vacías todas las salas de las pruebas anteriores.
         caso("Tras 5 minutos sin consultar el anfitrión pierde la sala", () -> {
