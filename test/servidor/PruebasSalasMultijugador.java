@@ -143,12 +143,12 @@ final class PruebasSalasMultijugador {
         return SalasMultijugador.consultar(usuario, codigo).mensaje();
     }
 
-    /** [ausente] deja de consultar y los otros dos siguen: a los 25 s ya lo sacaron. */
+    /** [ausente] deja de consultar y los otros dos siguen: a los 65 s ya lo sacaron. */
     private static void dejaDeConsultar(String codigo, String a, String b) {
-        aLos(15);
+        aLos(45);
         sala(a, codigo);
         sala(b, codigo);
-        aLos(25);
+        aLos(65);
         sala(a, codigo);
     }
 
@@ -921,20 +921,43 @@ final class PruebasSalasMultijugador {
             });
         }
 
-        conReloj("En una partida en juego, quien deja de consultar 20 s la abandona", () -> {
+        conReloj("En una partida en juego, quien deja de consultar 1 min la abandona", () -> {
             String codigo = enJuegoDeTres("d1", "e1", "f1");
-            aLos(15);
+            aLos(45);
             sala("d1", codigo);
             sala("e1", codigo);
-            aLos(25);
+            aLos(65);
             iguales(List.of("d1", "e1"), sala("d1", codigo).jugadores());
             cierto(!SalasMultijugador.consultar("f1", codigo).exito(), "f1 siguió en la partida");
         });
 
-        conReloj("Con menos de 20 s sin consultar todavía no es abandono", () -> {
+        conReloj("Con menos de 1 min sin consultar todavía no es abandono", () -> {
             String codigo = enJuego("d4", 2);
-            aLos(19);
+            aLos(59);
             iguales(List.of("d4", "b4"), sala("d4", codigo).jugadores());
+        });
+
+        conReloj("Salir de la app medio minuto (contestar un mensaje) no es abandono", () -> {
+            String codigo = enJuegoDeTres("d6", "e6", "f6");
+            aLos(30);
+            sala("d6", codigo);
+            sala("e6", codigo);
+            iguales(List.of("d6", "e6", "f6"), sala("d6", codigo).jugadores());
+            cierto(SalasMultijugador.consultar("f6", codigo).exito(), "f6 no pudo volver a la partida");
+        });
+
+        conReloj("Quien vuelve antes del minuto tiene otro minuto completo", () -> {
+            String codigo = enJuegoDeTres("g9", "h9", "i9");
+            for (long segundo : new long[] {30, 50, 75, 100}) {
+                aLos(segundo);
+                sala("g9", codigo);
+                sala("h9", codigo);
+                // i9 sale de la app dos veces, menos de un minuto cada vez.
+                if (segundo == 50) {
+                    sala("i9", codigo);
+                }
+            }
+            iguales(List.of("g9", "h9", "i9"), sala("g9", codigo).jugadores());
         });
 
         conReloj("La ronda ya no espera a quien perdió la conexión", () -> {
@@ -942,35 +965,35 @@ final class PruebasSalasMultijugador {
             jugar("d2", codigo);
             jugar("e2", codigo);
             iguales(1, sala("d2", codigo).ronda());
-            aLos(15);
+            aLos(45);
             sala("d2", codigo);
             sala("e2", codigo);
-            aLos(25);
+            aLos(65);
             iguales(2, sala("d2", codigo).ronda());
         });
 
         conReloj("Quien abandona por desconexión conserva su lugar en la zona", () -> {
             String codigo = enJuegoDeTres("d3", "e3", "f3");
             completar("f3", codigo, 1);
-            aLos(15);
+            aLos(45);
             sala("d3", codigo);
             sala("e3", codigo);
-            aLos(25);
+            aLos(65);
             var vista = sala("d3", codigo);
             cierto(!vista.jugadores().contains("f3"), "f3 siguió en la partida");
             iguales(Map.of("f3", 1), vista.zonas().get(1));
         });
 
-        conReloj("En la sala de espera 20 s sin consultar no sacan a nadie", () -> {
+        conReloj("En la sala de espera 1 min sin consultar no sacan a nadie", () -> {
             String codigo = crear("d5", 2);
             SalasMultijugador.unirse("e5", codigo);
-            aLos(60);
+            aLos(90);
             iguales(List.of("d5", "e5"), sala("d5", codigo).jugadores());
         });
 
         conReloj("Una partida terminada no saca a nadie por no consultar", () -> {
             String codigo = partidaDe(2, "q");
-            aLos(60);
+            aLos(90);
             var vista = sala("qj2", codigo);
             iguales(List.of("qj1", "qj2"), vista.jugadores());
             iguales(List.of("qj1"), vista.ganadores());
@@ -1045,9 +1068,9 @@ final class PruebasSalasMultijugador {
 
         conReloj("Quien queda cuando los demás pierden la conexión gana por abandono", () -> {
             String codigo = enJuegoDeTres("h6", "i6", "k6");
-            aLos(15);
+            aLos(45);
             sala("h6", codigo);
-            aLos(25);
+            aLos(65);
             var vista = sala("h6", codigo);
             iguales(List.of("h6"), vista.jugadores());
             cierto(vista.terminada() && vista.porAbandono(), "no ganó por abandono");
@@ -1074,7 +1097,7 @@ final class PruebasSalasMultijugador {
 
         conReloj("Si la sala ya no existe, igual se dice que fue por inactividad", () -> {
             String codigo = enJuego("m4", 2);
-            aLos(25);
+            aLos(65);
             SalasMultijugador.quitarAusentes(SalasMultijugador.reloj.getAsLong());
             iguales(SalasMultijugador.MENSAJE_INACTIVIDAD, mensajeAl("m4", codigo));
         });

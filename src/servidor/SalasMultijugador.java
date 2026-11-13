@@ -26,7 +26,7 @@ import java.util.function.Predicate;
  * conoce los mapas. El registro no se borra cuando alguien sale: su lugar queda ocupado y nadie sube.
  * Al terminar cada ronda se revisa si alguien llegó a la meta (según cuántos empezaron) o si ya nadie puede
  * jugar; entonces la partida termina y gana quien tenga más puntos, o todos los empatados.
- * Quien deja de consultar sale: en la partida en juego a los 20 s, cuenta como abandono; en la sala de espera, al
+ * Quien deja de consultar sale: en la partida en juego al minuto, cuenta como abandono; en la sala de espera, al
  * perder su sesión. Si en la partida solo queda uno, gana por abandono de los demás.
  */
 public final class SalasMultijugador {
@@ -37,8 +37,9 @@ public final class SalasMultijugador {
     // Holgado a propósito: en el celular la app se detiene mientras el anfitrión comparte el código en otra app.
     static final long SIN_CONTACTO_MAX_MS = 5 * 60 * 1000L;
     // Con la partida en juego la app consulta cada 2 s: quien deja de hacerlo tanto tiempo perdió la conexión,
-    // y eso cuenta como abandono para no dejar a los demás esperando su turno.
-    static final long SIN_CONTACTO_EN_PARTIDA_MS = 20 * 1000L;
+    // y eso cuenta como abandono para no dejar a los demás esperando su turno. Un minuto deja salir un momento
+    // de la app en el celular (contestar un mensaje) sin perder la partida.
+    static final long SIN_CONTACTO_EN_PARTIDA_MS = 60 * 1000L;
 
     // Las pruebas lo adelantan para simular que pasó el tiempo.
     static LongSupplier reloj = System::currentTimeMillis;
