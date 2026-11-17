@@ -191,12 +191,12 @@ final class PruebasSalasMultijugador {
         });
 
         caso("Un código inexistente se rechaza", () ->
-                iguales("No existe ninguna partida con ese código.", SalasMultijugador.unirse("a6", "------").mensaje()));
+                iguales("No existe ninguna sala con ese código.", SalasMultijugador.unirse("a6", "------").mensaje()));
 
         caso("Una sala llena no acepta a nadie más", () -> {
             String codigo = crear("a7", 2);
             SalasMultijugador.unirse("b7", codigo);
-            iguales("La partida ya está llena.", SalasMultijugador.unirse("c7", codigo).mensaje());
+            iguales("La sala ya está llena.", SalasMultijugador.unirse("c7", codigo).mensaje());
         });
 
         caso("Volver a unirse no ocupa otro lugar, aunque la sala esté llena", () -> {
@@ -621,7 +621,7 @@ final class PruebasSalasMultijugador {
             String codigo = enJuego("a62", 2);
             SalasMultijugador.salir("a62", codigo);
             SalasMultijugador.salir("b62", codigo);
-            iguales("No existe ninguna partida con ese código.", SalasMultijugador.unirse("b62", codigo).mensaje());
+            iguales("No existe ninguna sala con ese código.", SalasMultijugador.unirse("b62", codigo).mensaje());
         });
 
         caso("Insistir no provoca un lanzamiento mientras otros juegan", () -> {

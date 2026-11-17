@@ -197,7 +197,7 @@ public final class SalasMultijugador {
             return Resultado.error("Ese mapa no existe.");
         }
         if (capacidad < MIN_JUGADORES || capacidad > MAX_JUGADORES) {
-            return Resultado.error("La partida debe ser de " + MIN_JUGADORES + " a " + MAX_JUGADORES + " jugadores.");
+            return Resultado.error("La sala debe ser de " + MIN_JUGADORES + " a " + MAX_JUGADORES + " jugadores.");
         }
         quitarAusentes(reloj.getAsLong());
         sacarDeSalas(usuario);
@@ -214,20 +214,20 @@ public final class SalasMultijugador {
         if (sala == null) {
             return SACADOS_POR_INACTIVIDAD.containsKey(usuario)
                     ? noDisponible(usuario, codigo)
-                    : Resultado.error("No existe ninguna partida con ese código.");
+                    : Resultado.error("No existe ninguna sala con ese código.");
         }
         if (!sala.jugadores.containsKey(usuario)) {
             if (sala.comenzada) {
                 return Resultado.error(sacadoDe(usuario, codigo) ? MENSAJE_INACTIVIDAD : "La partida ya comenzó.");
             }
             if (sala.jugadores.size() >= sala.capacidad) {
-                return Resultado.error("La partida ya está llena.");
+                return Resultado.error("La sala ya está llena.");
             }
             sacarDeSalas(usuario);
         }
         SACADOS_POR_INACTIVIDAD.remove(usuario);
         sala.jugadores.put(usuario, reloj.getAsLong());
-        return Resultado.ok("Te uniste a la partida.", sala.vista(usuario));
+        return Resultado.ok("Te uniste a la sala.", sala.vista(usuario));
     }
 
     /** Marca o desmarca al jugador como listo; si con eso ya están todos, la partida comienza. */
