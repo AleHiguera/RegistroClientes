@@ -20,7 +20,6 @@ public final class GestorCuentas {
 
     // Se compara contra este hash cuando el usuario no existe, para que la respuesta tarde lo mismo
     // y no se pueda averiguar qué usuarios existen midiendo el tiempo.
-    private static final String HASH_FICTICIO = BCrypt.hashpw("usuario-inexistente", BCrypt.gensalt(COSTO_BCRYPT));
 
     private static final Map<String, Intentos> INTENTOS_FALLIDOS = new ConcurrentHashMap<>();
 
@@ -175,15 +174,13 @@ public final class GestorCuentas {
             return Resultado.error("Error interno del servidor.");
         }
 
-        boolean coincide = BCrypt.checkpw(password, credencial != null ? credencial.hash() : HASH_FICTICIO);
-        if (credencial != null && coincide) {
+        if (credencial != null && BCrypt.checkpw(password, credencial.hash())) {
             INTENTOS_FALLIDOS.remove(clave);
             return Resultado.ok("Sesión iniciada.", credencial.usuario());
         }
 
         INTENTOS_FALLIDOS.computeIfAbsent(clave, k -> new Intentos()).registrarFallo();
-        // Mismo mensaje exista o no el usuario, para no dar pistas
-        return Resultado.error("Usuario o contraseña incorrectos.");
+        return Resultado.error(MensajesAcceso.fallo(credencial != null, usuario.trim()));
     }
 
     private static Credencial buscarCredencial(String usuario) throws SQLException {

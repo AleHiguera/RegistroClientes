@@ -19,6 +19,7 @@ public final class Pruebas {
         PruebasSalasMultijugador.ejecutar();
         PruebasJson.ejecutar();
         PruebasTableroEnviado.ejecutar();
+        PruebasMensajesAcceso.ejecutar();
         PruebasPuntuacion.ejecutar();
 
         System.out.println("\n" + correctas + " correctas, " + fallidas + " fallidas");

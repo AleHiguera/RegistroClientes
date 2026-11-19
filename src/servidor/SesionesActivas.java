@@ -29,6 +29,6 @@ public final class SesionesActivas {
     }
 
     public static String mensajeOcupado(String usuario) {
-        return "El usuario \"" + usuario + "\" ya está conectado, intenta con otro.";
+        return MensajesAcceso.yaConectado(usuario);
     }
 }
