@@ -1148,5 +1148,78 @@ final class PruebasSalasMultijugador {
             SalasMultijugador.quitarAusentes(System.currentTimeMillis() + TRAS_AUSENCIA);
             cierto(!SalasMultijugador.consultar("b18", codigo).exito(), "la sala siguió abierta");
         });
+        caso("Al terminar, la sala trae el último tablero de cada jugador", () -> {
+            String codigo = enJuego("t1", 2);
+            String deT1 = "1" + "0".repeat(48);
+            String deB1 = "2" + "0".repeat(48);
+            SalasMultijugador.terminarTurno("t1", codigo, 1, true, null, deT1);
+            SalasMultijugador.terminarTurno("b1", codigo, 1, true, null, deB1);
+            var vista = sala("t1", codigo);
+            cierto(vista.terminada(), "no terminó");
+            iguales(Map.of("t1", deT1, "b1", deB1), vista.tablerosFinales());
+            iguales(List.of("t1", "b1"), List.copyOf(vista.tablerosFinales().keySet()));
+        });
+
+        caso("Mientras se juega no se ve el tablero de nadie", () -> {
+            String codigo = enJuego("t2", 2);
+            SalasMultijugador.terminarTurno("t2", codigo, 1, false, null, "1" + "0".repeat(48));
+            iguales(Map.of(), sala("b2", codigo).tablerosFinales());
+            iguales(Map.of(), sala("t2", codigo).tablerosFinales());
+        });
+
+        caso("Cuenta el tablero del último turno, no uno anterior", () -> {
+            String codigo = enJuego("t3", 2);
+            SalasMultijugador.terminarTurno("t3", codigo, 1, false, null, "1" + "0".repeat(48));
+            SalasMultijugador.terminarTurno("b3", codigo, 1, false, null, "2" + "0".repeat(48));
+            SalasMultijugador.terminarTurno("t3", codigo, 2, true, null, "11" + "0".repeat(47));
+            SalasMultijugador.terminarTurno("b3", codigo, 2, true, null, "22" + "0".repeat(47));
+            iguales("11" + "0".repeat(47), sala("t3", codigo).tablerosFinales().get("t3"));
+        });
+
+        caso("Quien no jugó ningún turno muestra el tablero con el que empezó", () -> {
+            String codigo = comenzada("t4", 2);
+            String inicial = "1234560" + "0".repeat(42);
+            SalasMultijugador.finalizarTablero("t4", codigo, ORDEN, inicial);
+            SalasMultijugador.finalizarTablero("b4", codigo, OTRO_ORDEN, "6543210" + "0".repeat(42));
+            // b4 se va antes de jugar: t4 gana por abandono.
+            SalasMultijugador.salir("b4", codigo);
+            var vista = sala("t4", codigo);
+            cierto(vista.terminada() && vista.porAbandono(), "no terminó por abandono");
+            iguales(inicial, vista.tablerosFinales().get("t4"));
+        });
+
+        caso("También aparece el tablero de quien abandonó", () -> {
+            String codigo = enJuegoDeTres("t5", "u5", "v5");
+            String deV5 = "5" + "0".repeat(48);
+            SalasMultijugador.terminarTurno("v5", codigo, 1, false, null, deV5);
+            SalasMultijugador.salir("v5", codigo);
+            SalasMultijugador.terminarTurno("t5", codigo, 1, true, null, "1".repeat(49));
+            SalasMultijugador.terminarTurno("u5", codigo, 1, true, null, "2".repeat(49));
+            var vista = sala("t5", codigo);
+            cierto(vista.terminada(), "no terminó");
+            cierto(!vista.jugadores().contains("v5"), "v5 sigue en la partida");
+            iguales(deV5, vista.tablerosFinales().get("v5"));
+            iguales(List.of("t5", "u5", "v5"), List.copyOf(vista.tablerosFinales().keySet()));
+        });
+
+        caso("Un tablero mal formado se ignora sin frenar el turno", () -> {
+            String codigo = enJuego("t6", 2);
+            var resultado = SalasMultijugador.terminarTurno("t6", codigo, 1, true, null, "basura");
+            cierto(resultado.exito(), "rechazó el turno");
+            cierto(resultado.sala().jugaron().contains("t6"), "no contó el turno");
+            SalasMultijugador.terminarTurno("b6", codigo, 1, true, null, "2".repeat(49));
+            var vista = sala("t6", codigo);
+            cierto(!vista.tablerosFinales().containsKey("t6"), "guardó un tablero mal formado");
+            iguales("2".repeat(49), vista.tablerosFinales().get("b6"));
+        });
+
+        caso("Un turno sin tablero (app vieja) sigue funcionando", () -> {
+            String codigo = enJuego("t7", 2);
+            SalasMultijugador.terminarTurno("t7", codigo, 1, true, null);
+            SalasMultijugador.terminarTurno("b7", codigo, 1, true, null);
+            var vista = sala("t7", codigo);
+            cierto(vista.terminada(), "no terminó");
+            iguales(Map.of(), vista.tablerosFinales());
+        });
     }
 }

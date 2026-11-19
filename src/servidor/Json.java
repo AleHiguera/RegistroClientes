@@ -63,7 +63,14 @@ final class Json {
                 + ",\"terminada\":" + sala.terminada()
                 + ",\"ganadores\":" + lista(sala.ganadores())
                 + ",\"porAbandono\":" + sala.porAbandono()
+                + ",\"tablerosFinales\":" + textos(sala.tablerosFinales())
                 + "}";
+    }
+
+    private static String textos(Map<String, String> textos) {
+        StringJoiner json = new StringJoiner(",", "{", "}");
+        textos.forEach((clave, valor) -> json.add(texto(clave) + ":" + texto(valor)));
+        return json.toString();
     }
 
     private static String zonas(Map<Integer, Map<String, Integer>> zonas) {

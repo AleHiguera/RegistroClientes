@@ -27,7 +27,8 @@ final class PruebasJson {
                             + "\"listos\":[\"lu\\\"is\"],\"comenzada\":true,"
                             + "\"finalizados\":[\"ana\"],\"configurada\":true,\"miTablero\":[3,1,2,6,5,4],"
                             + "\"ronda\":2,\"dados\":[5,2],\"jugaron\":[\"ana\"],\"zonas\":{\"3\":{\"lu\\\"is\":2}},"
-                            + "\"meta\":24,\"terminada\":true,\"ganadores\":[\"ana\"],\"porAbandono\":false}",
+                            + "\"meta\":24,\"terminada\":true,\"ganadores\":[\"ana\"],\"porAbandono\":false,"
+                            + "\"tablerosFinales\":{}}",
                     Json.sala("Sala.", sala));
         });
 
@@ -35,7 +36,20 @@ final class PruebasJson {
             var sala = new SalasMultijugador.Vista("ABC234", 1, 2, "ana", List.of("ana"), List.of("ana"), true,
                     List.of("ana"), true, List.of(1, 2, 3, 4, 5, 6), 1, List.of(5, 2), List.of(), Map.of(),
                     26, true, List.of("ana"), true);
-            cierto(Json.sala("Sala.", sala).endsWith(",\"ganadores\":[\"ana\"],\"porAbandono\":true}"),
+            cierto(Json.sala("Sala.", sala).endsWith(",\"ganadores\":[\"ana\"],\"porAbandono\":true,"
+                            + "\"tablerosFinales\":{}}"),
+                    Json.sala("Sala.", sala));
+        });
+
+        caso("La sala terminada lleva el tablero de cada jugador", () -> {
+            Map<String, String> tableros = new java.util.LinkedHashMap<>();
+            tableros.put("ana", "1".repeat(49));
+            tableros.put("lu\"is", "0".repeat(49));
+            var sala = new SalasMultijugador.Vista("ABC234", 1, 2, "ana", List.of("ana"), List.of("ana"), true,
+                    List.of("ana"), true, List.of(1, 2, 3, 4, 5, 6), 3, List.of(5, 2), List.of(), Map.of(),
+                    26, true, List.of("ana"), false, tableros);
+            cierto(Json.sala("Sala.", sala).endsWith(",\"tablerosFinales\":{\"ana\":\"" + "1".repeat(49)
+                            + "\",\"lu\\\"is\":\"" + "0".repeat(49) + "\"}}"),
                     Json.sala("Sala.", sala));
         });
     }

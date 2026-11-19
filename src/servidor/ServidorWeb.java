@@ -291,7 +291,8 @@ public final class ServidorWeb {
             responder(intercambio, 400, false, "Datos incompletos.");
             return;
         }
-        responderSala(intercambio, SalasMultijugador.finalizarTablero(sesion.usuario, codigo, numeros));
+        responderSala(intercambio, SalasMultijugador.finalizarTablero(sesion.usuario, codigo, numeros,
+                datos.get("tablero")));
     }
 
     /** Como al finalizar, el jugador sale de la sesión: nadie puede dar por jugado el turno de otro. */
@@ -319,7 +320,7 @@ public final class ServidorWeb {
             return;
         }
         responderSala(intercambio, SalasMultijugador.terminarTurno(sesion.usuario, codigo, ronda,
-                "true".equals(datos.get("lleno")), zona));
+                "true".equals(datos.get("lleno")), zona, datos.get("tablero")));
     }
 
     /** Las acciones sobre una sala ya creada: todas reciben solo su código. */

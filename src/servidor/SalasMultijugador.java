@@ -67,13 +67,25 @@ public final class SalasMultijugador {
      * [miTablero] son los números iniciales de quien consulta (vacío si no ha finalizado): los ajenos no se envían.
      * [ronda] vale 0 hasta el primer lanzamiento, y entonces [dados] está vacío. [jugaron] son quienes ya no
      * deben nada en esta ronda, incluidos los que llenaron su tablero. [zonas] dice, por número de zona, en
-     * qué ronda la completó cada jugador.
+     * qué ronda la completó cada jugador. [tablerosFinales] es el último tablero de cada uno de los que empezaron
+     * (también de quien abandonó), en el orden en que entraron; solo se envía con la partida terminada, para que
+     * nadie vea el tablero de otro mientras se juega.
      */
     public record Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
                         List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
                         List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron,
                         Map<Integer, Map<String, Integer>> zonas, int meta, boolean terminada,
-                        List<String> ganadores, boolean porAbandono) {}
+                        List<String> ganadores, boolean porAbandono, Map<String, String> tablerosFinales) {
+        /** Sin tableros finales: así se arma mientras se juega. */
+        public Vista(String codigo, int mapa, int capacidad, String anfitrion, List<String> jugadores,
+                     List<String> listos, boolean comenzada, List<String> finalizados, boolean configurada,
+                     List<Integer> miTablero, int ronda, List<Integer> dados, List<String> jugaron,
+                     Map<Integer, Map<String, Integer>> zonas, int meta, boolean terminada,
+                     List<String> ganadores, boolean porAbandono) {
+            this(codigo, mapa, capacidad, anfitrion, jugadores, listos, comenzada, finalizados, configurada,
+                    miTablero, ronda, dados, jugaron, zonas, meta, terminada, ganadores, porAbandono, Map.of());
+        }
+    }
 
     public record Resultado(boolean exito, String mensaje, Vista sala) {
         static Resultado ok(String mensaje, Vista sala) {
@@ -108,6 +120,10 @@ public final class SalasMultijugador {
         private List<String> ganadores = List.of();
         // Terminó porque todos los demás salieron: gana quien se quedó, tenga los puntos que tenga.
         private boolean porAbandono;
+        // Quienes empezaron la partida, en orden de llegada; no cambia aunque alguien salga.
+        private List<String> participantes = List.of();
+        // usuario → su último tablero (ver [TableroEnviado]); se conserva aunque abandone.
+        private final Map<String, String> ultimosTableros = new HashMap<>();
 
         Sala(String codigo, int mapa, int capacidad, String anfitrion) {
             this.codigo = codigo;
@@ -126,7 +142,27 @@ public final class SalasMultijugador {
                     tablerosConfigurados(),
                     tableros.getOrDefault(usuario, List.of()), ronda, dados,
                     enOrden.stream().filter(this::yaNoDebeNada).toList(), copiaDeZonas(),
-                    comenzada ? meta() : 0, terminada, ganadores, porAbandono);
+                    comenzada ? meta() : 0, terminada, ganadores, porAbandono, tablerosFinales());
+        }
+
+        private Map<String, String> tablerosFinales() {
+            Map<String, String> finales = new LinkedHashMap<>();
+            if (terminada) {
+                for (String participante : participantes) {
+                    String tablero = ultimosTableros.get(participante);
+                    if (tablero != null) {
+                        finales.put(participante, tablero);
+                    }
+                }
+            }
+            return finales;
+        }
+
+        /** Guarda el tablero que mandó el jugador, si es válido; uno mal formado se ignora sin frenar el juego. */
+        void recordarTablero(String usuario, String tablero) {
+            if (TableroEnviado.esValido(tablero)) {
+                ultimosTableros.put(usuario, tablero);
+            }
         }
 
         private Map<Integer, Map<String, Integer>> copiaDeZonas() {
@@ -186,6 +222,7 @@ public final class SalasMultijugador {
             if (!comenzada && jugadores.size() >= MIN_JUGADORES && listos.containsAll(jugadores.keySet())) {
                 comenzada = true;
                 jugadoresAlComenzar = jugadores.size();
+                participantes = List.copyOf(jugadores.keySet());
             }
         }
     }
@@ -256,6 +293,12 @@ public final class SalasMultijugador {
      * Aquí solo se revisa que sean del 1 al 6 sin repetir; las reglas de cada zona del mapa las aplica la app.
      */
     public static synchronized Resultado finalizarTablero(String usuario, String codigo, String numeros) {
+        return finalizarTablero(usuario, codigo, numeros, null);
+    }
+
+    /** Como el anterior, y además recuerda el [tablero] con el que empieza, por si no llega a jugar ningún turno. */
+    public static synchronized Resultado finalizarTablero(String usuario, String codigo, String numeros,
+                                                          String tablero) {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
@@ -273,6 +316,7 @@ public final class SalasMultijugador {
             return Resultado.error("Los números iniciales deben ser del 1 al 6, sin repetir.");
         }
         sala.tableros.put(usuario, leidos);
+        sala.recordarTablero(usuario, tablero);
         sala.avanzarRonda();
         return Resultado.ok("Tablero finalizado.", sala.vista(usuario));
     }
@@ -291,6 +335,12 @@ public final class SalasMultijugador {
      */
     public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno,
                                                        Integer zona) {
+        return terminarTurno(usuario, codigo, ronda, tableroLleno, zona, null);
+    }
+
+    /** Como el anterior, y además recuerda cómo quedó su [tablero] tras el turno, para mostrarlo al final. */
+    public static synchronized Resultado terminarTurno(String usuario, String codigo, int ronda, boolean tableroLleno,
+                                                       Integer zona, String tablero) {
         quitarAusentes(reloj.getAsLong());
         Sala sala = SALAS.get(CodigoSala.normalizar(codigo));
         if (sala == null || !sala.jugadores.containsKey(usuario)) {
@@ -310,6 +360,7 @@ public final class SalasMultijugador {
             return Resultado.ok("Tu turno ya estaba terminado.", sala.vista(usuario));
         }
         sala.jugaron.add(usuario);
+        sala.recordarTablero(usuario, tablero);
         if (zona != null) {
             sala.zonas.computeIfAbsent(zona, nueva -> new LinkedHashMap<>()).putIfAbsent(usuario, ronda);
         }
